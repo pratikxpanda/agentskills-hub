@@ -76,6 +76,24 @@ def examples() -> None:
     _run([_PY, "scripts/validate_examples.py"])
 
 
+def migrate() -> None:
+    """Upgrade the database to the latest migration."""
+    _run([str(Path(_PY).parent / "alembic"), "upgrade", "head"])
+
+
+def migrate_down() -> None:
+    """Roll the database back one migration."""
+    _run([str(Path(_PY).parent / "alembic"), "downgrade", "-1"])
+
+
+def migration() -> None:
+    """Autogenerate a migration: dev.py migration "message"."""
+    if len(sys.argv) < 3:
+        print('Usage: dev.py migration "describe the change"')
+        sys.exit(1)
+    _run([str(Path(_PY).parent / "alembic"), "revision", "--autogenerate", "-m", sys.argv[2]])
+
+
 def check() -> None:
     """Run every check without modifying files."""
     fmt_check()
@@ -156,6 +174,9 @@ TASKS = {
     "imports": imports,
     "docs": docs,
     "examples": examples,
+    "migrate": migrate,
+    "migrate:down": migrate_down,
+    "migration": migration,
     "check": check,
     "test": test,
     "test:cov": test_cov,
