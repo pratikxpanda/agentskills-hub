@@ -78,7 +78,29 @@ Two columns carry rules worth restating, because collapsing them is the easiest 
 `skill.lifecycle` applies to a skill and all of its versions at once, and `skill_version.status`
 applies to a single version. They are separate columns with separate enums.
 
-### Layering rules
+## Skill store
+
+Published content lives on disk under a layout with one more level than looks necessary:
+
+```text
+{store_root}/skills/{skill_id}/{version}/{skill_id}/SKILL.md
+```
+
+The doubled `{skill_id}` is deliberate. `{store_root}/skills/{skill_id}/{version}` is handed
+straight to the SDK's `LocalFileSystemSkillProvider`, and the directory inside it is the skill
+directory the provider expects — so the Hub owns no retrieval code and parses no frontmatter.
+[ADR 0002](adr/0002-versioned-filesystem-skill-store.md) covers the layouts that were rejected.
+
+Publishing extracts into `{store_root}/staging/{uuid}`, validates there with the SDK's own
+`validate_skill()`, and only then renames the directory into place. A version directory is either
+absent or complete; the gateway may be composing a registry from the tree at the same time.
+
+Archives are treated as hostile. `extractall` is not used even with a filter, because the size
+limits have to be enforced while bytes are being read rather than after a member has landed on
+disk. Traversal, absolute paths, drive letters, backslash separators, symlinks, non-regular
+members, and the three bomb dimensions each have their own test with a hand-built fixture.
+
+## Layering rules
 
 The first three are enforced in CI by import-linter contracts, not by convention. The last becomes
 a contract as the code it constrains appears.
