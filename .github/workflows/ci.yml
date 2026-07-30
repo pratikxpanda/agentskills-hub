@@ -27,23 +27,11 @@ jobs:
       - name: Check relative links
         run: python scripts/check_links.py
 
+      - name: Install PyYAML
+        run: python -m pip install --upgrade pyyaml
+
       - name: Validate YAML
-        run: |
-          python - <<'PY'
-          import pathlib, sys, yaml
-          skip = {".git", ".venv", "node_modules", ".local"}
-          failed = False
-          for path in sorted(pathlib.Path(".").rglob("*.y*ml")):
-              if skip.intersection(path.parts):
-                  continue
-              try:
-                  yaml.safe_load(path.read_text(encoding="utf-8"))
-                  print(f"ok   {path}")
-              except yaml.YAMLError as exc:
-                  failed = True
-                  print(f"FAIL {path}: {exc}", file=sys.stderr)
-          sys.exit(1 if failed else 0)
-          PY
+        run: python scripts/check_yaml.py
 
   examples:
     name: Example skills

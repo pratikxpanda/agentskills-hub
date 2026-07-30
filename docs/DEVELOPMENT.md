@@ -51,6 +51,7 @@ agentskills-hub/
 │   └── agent/                            # Agent Framework and LangChain reference agents
 ├── scripts/
 │   ├── check_links.py                    # relative markdown links resolve
+│   ├── check_yaml.py                     # every YAML file parses
 │   ├── validate_examples.py              # examples/skills/ pass the SDK's validator
 │   ├── sync_labels.py                    # apply .github/labels.yml to the repo
 │   ├── dev.py                            # task runner
@@ -76,15 +77,16 @@ These are enforced in CI by an import-linter contract, not by convention:
 
 ### Available now
 
-The repository is at the design stage, so only two checks exist — and both run in CI on every push
+The repository is at the design stage, so only three checks exist — and all run in CI on every push
 and pull request:
 
 | Command | Behaviour |
 |---|---|
 | `python scripts/check_links.py` | Every relative markdown link resolves. Stdlib only. |
+| `python scripts/check_yaml.py` | Every YAML file parses. Requires `pip install pyyaml`. |
 | `python scripts/validate_examples.py` | `examples/skills/` validate against the SDK's own `validate_skill()`. Requires `pip install agentskills-core agentskills-fs`. |
 
-The second is deliberately not a local reimplementation of the spec rules. If a published SDK
+The last is deliberately not a local reimplementation of the spec rules. If a published SDK
 release stops accepting the example skills, that is a finding about the Hub's core promise, and a
 weekly scheduled run surfaces it even when nobody is committing.
 
