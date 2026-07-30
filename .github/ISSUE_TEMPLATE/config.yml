@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Question or idea
+    url: https://github.com/pratikxpanda/agentskills-hub/discussions
+    about: Open-ended questions, proposals, and anything not yet concrete enough for an issue.
+  - name: Security vulnerability
+    url: https://github.com/pratikxpanda/agentskills-hub/security/advisories/new
+    about: Report privately. Never open a public issue for a vulnerability.
+  - name: SDK issue
+    url: https://github.com/pratikxpanda/agentskills-sdk/issues
+    about: Skill parsing, providers, registry, or the MCP server itself belong to the SDK.

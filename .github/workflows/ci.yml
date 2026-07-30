@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Surfaces an SDK release that breaks the example skills even when the repo is quiet.
+    - cron: "0 6 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  docs:
+    name: Docs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version-file: .python-version
+
+      - name: Check relative links
+        run: python scripts/check_links.py
+
+      - name: Install PyYAML
+        run: python -m pip install --upgrade pyyaml
+
+      - name: Validate YAML
+        run: python scripts/check_yaml.py
+
+  examples:
+    name: Example skills
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version-file: .python-version
+
+      # Installed unpinned on purpose: a published SDK that rejects our examples is a
+      # finding, not a broken build to be papered over with a constraint.
+      - name: Install the SDK
+        run: python -m pip install --upgrade agentskills-core agentskills-fs
+
+      - name: Validate example skills
+        run: python scripts/validate_examples.py

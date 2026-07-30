@@ -1,0 +1,32 @@
+version: 2
+
+updates:
+  # GitHub Actions
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    labels:
+      - ci
+    commit-message:
+      prefix: "ci:"
+
+  # Python dependencies (Poetry) — active once packages/ exists
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+    labels:
+      - dependencies
+    commit-message:
+      prefix: "deps:"
+
+  # Web UI dependencies — active once web/ exists
+  - package-ecosystem: npm
+    directory: /web
+    schedule:
+      interval: weekly
+    labels:
+      - dependencies
+    commit-message:
+      prefix: "deps:"
