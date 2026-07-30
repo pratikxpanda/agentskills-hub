@@ -1,0 +1,25 @@
+[tool.poetry]
+name = "agentskills-hub-gateway"
+version = "0.1.0"
+description = "Multi-tenant MCP endpoint serving each team its subscribed Agent Skills"
+license = "MIT"
+authors = ["Pratik Panda"]
+readme = "README.md"
+homepage = "https://github.com/pratikxpanda/agentskills-hub"
+repository = "https://github.com/pratikxpanda/agentskills-hub"
+packages = [{include = "agentskills_hub_gateway"}]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+]
+
+[tool.poetry.dependencies]
+python = ">=3.12,<3.14"
+agentskills-hub-core = ">=0.1.0,<1.0"
+agentskills-mcp-server = ">=0.2.3,<0.3.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
