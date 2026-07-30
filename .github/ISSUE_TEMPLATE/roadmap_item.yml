@@ -1,0 +1,46 @@
+name: Roadmap item
+description: File a specified roadmap item as a tracked issue.
+title: "[vX.Y] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        For items that already have a written specification in
+        [`docs/issues/`](https://github.com/pratikxpanda/agentskills-hub/tree/main/docs/issues).
+        **Link the spec, do not copy it.** Duplicated text is what drifts — the spec file records
+        the conclusion, this issue records the discussion.
+
+  - type: input
+    id: spec
+    attributes:
+      label: Specification
+      description: Link to the numbered section in docs/issues/vX.Y.md.
+      placeholder: docs/issues/v0.1.md#8-serve-a-per-team-mcp-endpoint
+    validations:
+      required: true
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: One-line summary
+      description: The roadmap line for this item.
+    validations:
+      required: true
+
+  - type: textarea
+    id: blocked
+    attributes:
+      label: Dependencies
+      description: |
+        Other Hub items that must land first, and any upstream SDK issue this is blocked on.
+        If it is blocked on the SDK, state the interim behaviour so this can still ship.
+
+  - type: checkboxes
+    id: readiness
+    attributes:
+      label: Readiness
+      options:
+        - label: The spec has acceptance criteria that can be checked off.
+          required: true
+        - label: Labels for theme, area, and type have been applied.
+        - label: Assigned to the right milestone.

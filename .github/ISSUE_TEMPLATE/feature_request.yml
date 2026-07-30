@@ -1,0 +1,62 @@
+name: Feature request
+description: Propose a capability the Hub should have.
+labels: ["type:feature"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please read [ROADMAP.md](https://github.com/pratikxpanda/agentskills-hub/blob/main/docs/ROADMAP.md)
+        first — particularly the product principles and the explicit non-goals. A proposal that
+        conflicts with a principle is still welcome, but it needs to argue the trade-off rather
+        than work around it.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What goes wrong today, for whom. Describe the situation, not the solution.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed approach
+      description: What you think should happen. Rough is fine.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: theme
+    attributes:
+      label: Closest theme
+      options:
+        - Publishing & authoring
+        - Catalog & discovery
+        - Entitlement & delivery
+        - Governance & workflow
+        - Trust & supply chain
+        - Operability & insight
+        - Scale & multi-tenancy
+        - Developer experience
+        - Ecosystem
+        - Project health
+        - Not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you considered
+      description: Including doing nothing, and why that is not enough.
+
+  - type: checkboxes
+    id: constraints
+    attributes:
+      label: Constraints
+      options:
+        - label: This does not require the Hub to re-implement anything the SDK owns, or I have explained why it must.
+          required: true
+        - label: This does not silently change what a subscribed team's agent is told.
+          required: true

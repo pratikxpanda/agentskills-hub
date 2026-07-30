@@ -1,0 +1,7 @@
+# Default owner for everything in the repo
+* @pratikxpanda
+
+# Decisions and the model everything else depends on
+/docs/adr/ @pratikxpanda
+/docs/DESIGN.md @pratikxpanda
+/docs/ROADMAP.md @pratikxpanda

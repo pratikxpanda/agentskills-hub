@@ -1,0 +1,16 @@
+changelog:
+  categories:
+    - title: Features
+      labels: ["type:feature", enhancement, feature]
+    - title: Bug Fixes
+      labels: ["type:bug", bug, fix]
+    - title: Breaking Changes
+      labels: [breaking-change]
+    - title: Documentation
+      labels: ["type:docs", documentation]
+    - title: CI/CD
+      labels: [ci, automation]
+    - title: Dependencies
+      labels: [dependencies]
+    - title: Other Changes
+      labels: ["*"]

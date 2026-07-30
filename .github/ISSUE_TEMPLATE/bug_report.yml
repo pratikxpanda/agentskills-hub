@@ -1,0 +1,55 @@
+name: Bug report
+description: Something does not behave the way it is specified to.
+labels: ["type:bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The Hub is at the design stage — most of what is described in the docs is not built yet.
+        If you are reporting that something described in `docs/` does not exist, that is not a bug;
+        the roadmap says so. Use this for behaviour that exists and is wrong.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, and what the system did in response.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+      description: If a spec or ADR says otherwise, link it — that makes this unambiguous.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Smallest sequence that shows the problem. Redact keys and skill content.
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Hub version or commit
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Deployment model, Python version, database, and SDK version.
+
+  - type: checkboxes
+    id: security
+    attributes:
+      label: Confirmation
+      options:
+        - label: This is not a security vulnerability. (If it is, report it privately instead.)
+          required: true
