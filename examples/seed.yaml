@@ -1,0 +1,44 @@
+# Seed manifest consumed by scripts/seed.py.
+#
+# Note what is here and what is not: this file carries Hub metadata — scope, owner, subscription
+# model, pinned versions. None of it appears in SKILL.md, which stays a plain SDK skill that works
+# unmodified with a filesystem provider. That separation is ADR 0001, demonstrated rather than
+# asserted.
+
+organization:
+  name: Contoso
+  slug: contoso
+
+domains:
+  - slug: payments
+    name: Payments
+
+teams:
+  - slug: checkout-squad
+    name: Checkout Squad
+    domain: payments
+  - slug: platform-team
+    name: Platform Team
+
+skills:
+  - source: ./skills/incident-response       # copied from the SDK's examples at seed time
+    skill_id: incident-response
+    version: 1.0.0
+    scope: org
+    owner: platform-team
+    visibility: listed
+    subscription_model: open
+
+  - source: ./skills/pci-payment-review
+    skill_id: pci-payment-review
+    version: 1.0.0
+    scope: domain
+    owner: payments
+    visibility: listed
+    subscription_model: approval-required
+
+subscriptions:
+  - team: checkout-squad
+    environment: default
+    skill: incident-response
+    version: 1.0.0
