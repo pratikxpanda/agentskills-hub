@@ -1,7 +1,7 @@
 version: 2
 
-# pip and npm ecosystems are added by the packages/ and web/ scaffolding, not before it:
-# Dependabot errors on every run against a directory with no manifest.
+# The npm ecosystem is added by the web/ scaffolding, not before it: Dependabot errors on every
+# run against a directory with no manifest.
 updates:
   - package-ecosystem: github-actions
     directory: /
@@ -11,3 +11,12 @@ updates:
       - ci
     commit-message:
       prefix: "ci:"
+
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+    labels:
+      - dependencies
+    commit-message:
+      prefix: "deps:"

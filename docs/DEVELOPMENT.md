@@ -1,10 +1,9 @@
 # Development Guide
 
-> **This describes the target workflow, not the current one.** The repository is at the design
-> stage; the layout and commands below are established by
-> [v0.1 item 1](issues/v0.1.md#1-repository-scaffolding-and-development-workflow). Until that
-> ships, this document is the specification for the scaffolding, and any divergence between it and
-> the code is a bug in one of them.
+> **The layout, tooling, and checks below are real.** The runtime commands — `dev`, `seed`,
+> `migrate`, `e2e` — are not: they arrive with the API, gateway, and data model later in v0.1, and
+> are marked as such. Any other divergence between this document and the code is a bug in one of
+> them.
 
 The conventions here deliberately mirror the
 [Agent Skills SDK](https://github.com/pratikxpanda/agentskills-sdk), so a contributor moving
@@ -26,13 +25,20 @@ git clone https://github.com/pratikxpanda/agentskills-hub.git
 cd agentskills-hub
 
 poetry install                      # all packages, editable, with dev dependencies
+poetry run python scripts/dev.py check
+poetry run python scripts/dev.py test
+```
+
+The steps below are not wired up yet; they land with the data model and the API:
+
+```bash
 poetry run alembic upgrade head     # create the SQLite schema
 python scripts/dev.py seed          # demo organization, teams, skills, API keys
 python scripts/dev.py dev           # API + gateway + UI
 ```
 
-`seed` prints the team API keys and MCP endpoint URLs. It is idempotent — running it twice does
-not duplicate anything.
+`seed` will print the team API keys and MCP endpoint URLs, and be idempotent — running it twice
+does not duplicate anything.
 
 ## Repository layout
 
@@ -43,28 +49,26 @@ agentskills-hub/
 │   ├── api/agentskills-hub-api/          # FastAPI: catalog, publish, subscriptions, auth
 │   ├── gateway/agentskills-hub-gateway/  # per-team MCP endpoint
 │   └── cli/agentskills-hub-cli/          # v0.2
-├── web/                                  # React SPA
-├── deploy/                               # Dockerfile, compose, Azure Container Apps
+├── web/                                  # React SPA (not built yet)
+├── deploy/                               # Dockerfile, compose, Azure Container Apps (not built yet)
 ├── examples/
 │   ├── skills/                           # seed corpus
 │   ├── seed.yaml                         # organization, teams, scopes, starting subscriptions
-│   └── agent/                            # Agent Framework and LangChain reference agents
+│   └── agent/                            # Agent Framework and LangChain reference agents (not built yet)
 ├── scripts/
 │   ├── check_links.py                    # relative markdown links resolve
 │   ├── check_yaml.py                     # every YAML file parses
 │   ├── validate_examples.py              # examples/skills/ pass the SDK's validator
 │   ├── sync_labels.py                    # apply .github/labels.yml to the repo
-│   ├── dev.py                            # task runner
-│   ├── seed.py
-│   ├── bump-version.ps1 / bump-version.sh
-│   └── publish.ps1 / publish.sh
+│   └── dev.py                            # task runner
 ├── .github/                              # workflows, issue and PR templates, labels, CODEOWNERS
 └── docs/
 ```
 
 ### Layering rules
 
-These are enforced in CI by an import-linter contract, not by convention:
+The first two are enforced in CI by import-linter contracts, not by convention. The others become
+contracts as the code they constrain appears.
 
 | Rule | Why |
 |---|---|
@@ -75,24 +79,7 @@ These are enforced in CI by an import-linter contract, not by convention:
 
 ## Commands
 
-### Available now
-
-The repository is at the design stage, so only three checks exist — and all run in CI on every push
-and pull request:
-
-| Command | Behaviour |
-|---|---|
-| `python scripts/check_links.py` | Every relative markdown link resolves. Stdlib only. |
-| `python scripts/check_yaml.py` | Every YAML file parses. Requires `pip install pyyaml`. |
-| `python scripts/validate_examples.py` | `examples/skills/` validate against the SDK's own `validate_skill()`. Requires `pip install agentskills-core agentskills-fs`. |
-
-The last is deliberately not a local reimplementation of the spec rules. If a published SDK
-release stops accepting the example skills, that is a finding about the Hub's core promise, and a
-weekly scheduled run surfaces it even when nobody is committing.
-
-### Once `packages/` exists
-
-`scripts/dev.py` becomes the single entry point. The first block matches the SDK exactly.
+`scripts/dev.py` is the single entry point. The first block matches the SDK exactly.
 
 | Command | Behaviour |
 |---|---|
@@ -101,15 +88,33 @@ weekly scheduled run surfaces it even when nobody is committing.
 | `python scripts/dev.py format` | Ruff format |
 | `python scripts/dev.py format:check` | Ruff format, check only |
 | `python scripts/dev.py typecheck` | mypy |
-| `python scripts/dev.py check` | lint + format check + typecheck |
+| `python scripts/dev.py check` | format check + lint + typecheck + import contracts + docs |
 | `python scripts/dev.py test` | pytest |
 | `python scripts/dev.py test:cov` | pytest with coverage |
 | `python scripts/dev.py clean` | Remove caches and build artefacts |
 | `python scripts/dev.py all` | format + lint + test |
-| `python scripts/dev.py dev` | Run API, gateway, and UI for local development |
-| `python scripts/dev.py seed` | Populate demo data |
-| `python scripts/dev.py migrate` | `alembic upgrade head` |
-| `python scripts/dev.py e2e` | End-to-end test: publish → subscribe → MCP connect |
+
+The Hub adds three of its own:
+
+| Command | Behaviour |
+|---|---|
+| `python scripts/dev.py imports` | The layering contracts in the table above, via import-linter |
+| `python scripts/dev.py docs` | Every relative markdown link resolves and every YAML file parses |
+| `python scripts/dev.py examples` | `examples/skills/` validate against the SDK's own `validate_skill()` |
+
+`examples` is deliberately not a local reimplementation of the spec rules, and CI installs the SDK
+unpinned to run it. If a published SDK release stops accepting the example skills, that is a
+finding about the Hub's central promise rather than a build to be repaired with a constraint, and
+a weekly scheduled run surfaces it even when nobody is committing.
+
+Not built yet:
+
+| Command | Arrives with |
+|---|---|
+| `python scripts/dev.py migrate` | Data model and migrations |
+| `python scripts/dev.py seed` | Demo data |
+| `python scripts/dev.py dev` | API, gateway, and UI |
+| `python scripts/dev.py e2e` | End-to-end: publish → subscribe → MCP connect |
 
 Run `check` and `test` before pushing; CI runs the same commands.
 
