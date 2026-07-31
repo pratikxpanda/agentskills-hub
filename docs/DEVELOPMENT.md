@@ -12,7 +12,7 @@ between the two repositories relearns nothing.
 
 | Tool | Version | Notes |
 |---|---|---|
-| Python | 3.12 or 3.13 | Matches the SDK's supported range. 3.14 is blocked upstream. |
+| Python | 3.12, 3.13, or 3.14 | Matches the SDK's supported range. |
 | Poetry | 2.0+ | Manages the monorepo; packages are installed in editable mode. |
 | Node.js | 20 LTS | Only for `web/`. |
 | Docker | any recent | Only for the container and compose targets. |

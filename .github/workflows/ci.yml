@@ -89,8 +89,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        # Capped at 3.13 by agentskills-mcp-server, which the gateway composes.
-        python-version: ["3.12", "3.13"]
+        python-version: ["3.12", "3.13", "3.14"]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
