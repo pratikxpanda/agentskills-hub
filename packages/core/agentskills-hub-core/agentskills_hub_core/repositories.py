@@ -34,6 +34,7 @@ from agentskills_hub_core.models import (
     Subscription,
     Team,
 )
+from agentskills_hub_core.security import mint_api_key
 from agentskills_hub_core.types import utcnow
 
 DEFAULT_ENVIRONMENT_NAME = "default"
@@ -96,6 +97,15 @@ class ApiKeyRepository:
         self._session.add(key)
         await self._session.flush()
         return key
+
+    async def issue(self, team_id: uuid.UUID, environment_id: uuid.UUID) -> tuple[ApiKey, str]:
+        """Mint a key and return it with its plaintext token.
+
+        The token is returned here and nowhere else; only its hash is stored.
+        """
+        minted = mint_api_key()
+        key = await self.create(team_id, environment_id, minted.prefix, minted.key_hash)
+        return key, minted.token
 
     async def get_by_prefix(self, prefix: str) -> ApiKey | None:
         result = await self._session.exec(select(ApiKey).where(ApiKey.prefix == prefix))

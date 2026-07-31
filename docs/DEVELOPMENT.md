@@ -112,6 +112,41 @@ a contract as the code it constrains appears.
 | Nothing outside `core` imports `sqlalchemy`, `sqlmodel`, or `alembic` | Persistence lives behind repositories; this is what makes the PostgreSQL move in v1.0 tractable. |
 | No package implements `SkillProvider`, parses frontmatter, or defines an MCP tool | [ADR 0001](adr/0001-hub-is-a-control-plane.md). If you need one, file an SDK issue. |
 
+Because layers above `core` legitimately reach persistence and the filesystem *through* `core`,
+the last two contracts are declared `allow_indirect_imports = true`: the rule is that these
+packages never do it themselves. Annotations are imports, so `core` re-exports `DatabaseSession`,
+`SessionFactory`, and `DatabaseEngine` — type-annotate against those, never against SQLAlchemy.
+
+## Authentication
+
+A credential is `ashub_{prefix}_{secret}`: a 12-character hex prefix used to look the key up, and
+a 256-bit hex secret that is never stored. Only the Argon2id hash of the secret is persisted, so a
+database dump yields nothing usable.
+
+Verification lives in `agentskills_hub_core.security` and deliberately does equal work on every
+path. When a prefix is unknown, `verify_secret` still runs a full Argon2 verification against a
+cached decoy hash, so an unknown prefix and a wrong secret cost the same and produce the same
+`401` with the same message and no details. Revocation is checked *after* verification for the
+same reason.
+
+`agentskills_hub_core.auth.authenticate` turns a token into a `TeamPrincipal`. That is the only
+place a request becomes a team.
+
+> **Handlers take the team from the principal and never from the URL.** A `{team}` path segment
+> exists for readability and cache keys. `require_team_match` compares it against the principal
+> and answers `403` on disagreement — it never uses the segment to select a team.
+
+Two operational notes:
+
+- **The rate limiter is per-process.** `FixedWindowLimiter` counts failed authentications in
+  memory, keyed by source address. It is correct for the single instance v0.1 deploys and wrong
+  the moment there are two; a shared counter arrives with horizontal scaling in v0.4.
+- **`last_used_at` is written after the response**, via a background task, so a write never sits
+  on the request's critical path.
+
+Roles do not exist yet. Any authenticated team may publish. This is a stated v0.1 limitation, not
+an oversight — see the README.
+
 ## Commands
 
 `scripts/dev.py` is the single entry point. The first block matches the SDK exactly.

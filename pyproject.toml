@@ -63,7 +63,7 @@ known-first-party = [
 
 [tool.mypy]
 python_version = "3.12"
-files = ["packages", "scripts"]
+files = ["packages", "scripts", "conftest.py"]
 warn_unused_configs = true
 warn_redundant_casts = true
 warn_unused_ignores = true
@@ -125,6 +125,9 @@ name = "only core touches the filesystem"
 type = "forbidden"
 source_modules = ["agentskills_hub_api", "agentskills_hub_gateway"]
 forbidden_modules = ["pathlib", "shutil", "tempfile"]
+# Direct imports only: these layers reach the filesystem *through* core, which necessarily
+# imports pathlib. The rule is that they never do it themselves.
+allow_indirect_imports = true
 
 # Persistence lives behind repositories, which is what makes the PostgreSQL move tractable.
 [[tool.importlinter.contracts]]
@@ -132,3 +135,4 @@ name = "no ORM session escapes core"
 type = "forbidden"
 source_modules = ["agentskills_hub_api", "agentskills_hub_gateway", "agentskills_hub_cli"]
 forbidden_modules = ["sqlalchemy", "sqlmodel", "alembic"]
+allow_indirect_imports = true
