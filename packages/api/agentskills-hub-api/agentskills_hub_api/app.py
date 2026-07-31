@@ -10,9 +10,10 @@ from fastapi import FastAPI
 from agentskills_hub_api import __version__
 from agentskills_hub_api.errors import ErrorResponse, register_error_handlers
 from agentskills_hub_api.ratelimit import FixedWindowLimiter
-from agentskills_hub_api.routers import health, teams
+from agentskills_hub_api.routers import health, publish, teams
 from agentskills_hub_api.settings import Settings
 from agentskills_hub_core import (
+    ArchiveLimits,
     LocalFileSystemSkillStore,
     create_engine,
     create_session_factory,
@@ -55,12 +56,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.settings = resolved
     app.state.engine = engine
     app.state.session_factory = create_session_factory(engine)
-    app.state.store = LocalFileSystemSkillStore(resolved.store_root)
+    app.state.store = LocalFileSystemSkillStore(
+        resolved.store_root,
+        ArchiveLimits(
+            max_archive_bytes=resolved.max_archive_bytes,
+            max_total_bytes=resolved.max_total_bytes,
+            max_file_bytes=resolved.max_file_bytes,
+            max_members=resolved.max_members,
+        ),
+    )
     app.state.auth_limiter = FixedWindowLimiter(
         resolved.auth_failure_limit, resolved.auth_failure_window_seconds
     )
 
     register_error_handlers(app)
     app.include_router(health.router)
+    app.include_router(publish.router)
     app.include_router(teams.router)
     return app

@@ -7,7 +7,7 @@ import-linter contract `no ORM session escapes core` enforces that mechanically.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -38,6 +38,9 @@ from agentskills_hub_core.security import mint_api_key
 from agentskills_hub_core.types import utcnow
 
 DEFAULT_ENVIRONMENT_NAME = "default"
+
+# How coarse `api_key.last_used_at` is allowed to be. See ApiKeyRepository.touch.
+LAST_USED_RESOLUTION = timedelta(minutes=5)
 
 
 class TeamRepository:
@@ -116,6 +119,28 @@ class ApiKeyRepository:
         if key is not None:
             key.last_used_at = when or utcnow()
             self._session.add(key)
+
+    async def touch(
+        self,
+        key_id: uuid.UUID,
+        when: datetime | None = None,
+        resolution: timedelta = LAST_USED_RESOLUTION,
+    ) -> bool:
+        """Record use, at most once per `resolution`. Returns whether anything changed.
+
+        Coarse on purpose. `last_used_at` answers "is this key still in use?", which needs no more
+        precision than minutes, and the coarseness is what keeps almost every authenticated
+        request free of a write.
+        """
+        key = await self._session.get(ApiKey, key_id)
+        if key is None:
+            return False
+        now = when or utcnow()
+        if key.last_used_at is not None and now - key.last_used_at < resolution:
+            return False
+        key.last_used_at = now
+        self._session.add(key)
+        return True
 
     async def revoke(self, key_id: uuid.UUID, when: datetime | None = None) -> None:
         key = await self._session.get(ApiKey, key_id)

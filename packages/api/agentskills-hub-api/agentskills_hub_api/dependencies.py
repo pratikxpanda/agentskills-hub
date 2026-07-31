@@ -13,7 +13,7 @@ import logging
 from collections.abc import AsyncIterator
 from typing import Annotated
 
-from fastapi import BackgroundTasks, Depends, Request, status
+from fastapi import Depends, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from agentskills_hub_api.errors import ApiError
@@ -70,21 +70,18 @@ async def get_session(
         yield session
 
 
+Session = Annotated[DatabaseSession, Depends(get_session)]
+Store = Annotated[LocalFileSystemSkillStore, Depends(get_store)]
+
+
 def _client_key(request: Request) -> str:
     return request.client.host if request.client else "unknown"
 
 
-async def _record_last_used(factory: SessionFactory, principal: TeamPrincipal) -> None:
-    async with session_scope(factory) as session:
-        await ApiKeyRepository(session).mark_used(principal.api_key_id)
-
-
 async def require_principal(
     request: Request,
-    background: BackgroundTasks,
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
     session: Annotated[DatabaseSession, Depends(get_session)],
-    factory: Annotated[SessionFactory, Depends(get_session_factory)],
     limiter: Annotated[FixedWindowLimiter, Depends(get_limiter)],
 ) -> TeamPrincipal:
     address = _client_key(request)
@@ -106,8 +103,11 @@ async def require_principal(
         raise ApiError(status.HTTP_401_UNAUTHORIZED, "unauthenticated", UNAUTHENTICATED)
 
     limiter.clear(address)
-    # last_used_at is written after the response, never on the request's critical path.
-    background.add_task(_record_last_used, factory, principal)
+    # Joins the transaction the request already has, and only when the recorded time is stale, so
+    # almost every authenticated request still performs no write. A BackgroundTask cannot be used:
+    # FastAPI runs background tasks *before* yield-dependency teardown, so this session's write
+    # transaction would still be open and a second connection would deadlock against it.
+    await ApiKeyRepository(session).touch(principal.api_key_id)
     return principal
 
 
