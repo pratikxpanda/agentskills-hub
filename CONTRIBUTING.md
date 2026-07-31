@@ -28,7 +28,7 @@ an agreed contract rather than from a guess about one.
 
 ### Prerequisites
 
-- Python 3.12 or 3.13
+- Python 3.12, 3.13, or 3.14
 - [Poetry](https://python-poetry.org/) 2.0+
 - Node.js 20 LTS for the web UI
 

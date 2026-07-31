@@ -65,19 +65,28 @@ The Hub is the SDK's first serious consumer, and several Hub milestones are gate
 This table is the contract between the two repositories; each row should have a corresponding
 issue in the [SDK roadmap](https://github.com/pratikxpanda/agentskills-sdk/blob/main/docs/ROADMAP.md).
 
-| SDK capability | SDK milestone | What it unblocks here |
-|---|---|---|
-| Optional `version` frontmatter | v0.3 | Version pinning in subscriptions. Without it the Hub has to track versions entirely out-of-band. |
-| Provider content caching | v0.3 | One gateway process serving many teams from one store, without re-reading `SKILL.md` per team per turn. |
-| Resource discovery (`list_resources`) | v0.3 | Publish-time inventory, resource browsing in the catalog UI, and integrity manifests later. |
-| Binary-safe resources | v0.3 | Publishing diagrams, PDFs, and screenshots without corrupting them. |
-| `agentskills validate` CLI + GitHub Action | v0.4 | Authors catch errors before publish; skill repos gate their own PRs without the Hub in the loop. |
-| Registry-level discovery / `register_all` | v0.4 | Composing a team registry from a subscription set without enumerating IDs by hand. |
-| Catalog filtering & budget | v0.4 | Teams with large subscription sets, where the injected catalog would otherwise grow without bound. |
-| Token cost reporting (`inspect --cost`) | v0.4 | Showing a team what its catalog costs per turn, which is the number the Hub is uniquely placed to own. |
-| Dynamic registry add/remove | v0.6 | Subscription changes taking effect on a live gateway without a restart. |
-| Skill integrity & provenance | v0.6 | Publish-time signing and a verified badge in the catalog. |
-| Skill usage telemetry hooks | v0.6 | Adoption analytics sourced from the data plane rather than inferred from HTTP logs. |
+| SDK capability | SDK milestone | Status | What it unblocks here |
+|---|---|---|---|
+| Optional `version` frontmatter | v0.3 | Shipped | Version pinning in subscriptions. Without it the Hub has to track versions entirely out-of-band. |
+| Provider content caching | v0.3 | Shipped | One gateway process serving many teams from one store, without re-reading `SKILL.md` per team per turn. |
+| Resource discovery (`list_resources`) | v0.3 | Shipped | Publish-time inventory, resource browsing in the catalog UI, and integrity manifests later. |
+| Binary-safe resources | v0.3 | Shipped | Publishing diagrams, PDFs, and screenshots without corrupting them. |
+| `agentskills validate` CLI + GitHub Action | v0.4 | Pending | Authors catch errors before publish; skill repos gate their own PRs without the Hub in the loop. |
+| Registry-level discovery / `register_all` | v0.4 | Pending | Composing a team registry from a subscription set without enumerating IDs by hand. |
+| Catalog filtering & budget | v0.4 | Pending | Teams with large subscription sets, where the injected catalog would otherwise grow without bound. |
+| Token cost reporting (`inspect --cost`) | v0.4 | Pending | Showing a team what its catalog costs per turn, which is the number the Hub is uniquely placed to own. |
+| Dynamic registry add/remove | v0.6 | Pending | Subscription changes taking effect on a live gateway without a restart. |
+| Skill integrity & provenance | v0.6 | Pending | Publish-time signing and a verified badge in the catalog. |
+| Skill usage telemetry hooks | v0.6 | Pending | Adoption analytics sourced from the data plane rather than inferred from HTTP logs. |
+
+The Hub tracks SDK v0.3. Two v0.1 items were written against capabilities that had not landed
+yet; both are now available, and the workarounds their specs describe are no longer needed:
+
+- **Item 4** notes that `version` is a required request field because frontmatter could not carry
+  it. It now can. Deciding whether frontmatter becomes authoritative, and what a disagreement
+  between it and the request field means, is open.
+- **Item 5** notes that the resource inventory would be reconstructed from the archive listing.
+  `list_resources()` makes that unnecessary.
 
 ---
 

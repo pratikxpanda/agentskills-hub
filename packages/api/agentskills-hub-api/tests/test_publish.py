@@ -92,6 +92,48 @@ async def test_the_stored_tree_is_readable_by_the_sdk_provider(api: ApiFixture) 
     assert await skill.get_body()
 
 
+async def test_the_stored_tree_enumerates_its_resources(api: ApiFixture) -> None:
+    """SDK v0.3's list_resources() is what item 5's inventory is built on. Prove it reads ours."""
+    from agentskills_core import Skill as SdkSkill
+    from agentskills_fs import LocalFileSystemSkillProvider
+
+    payload = _targz(
+        {
+            "incident-response/SKILL.md": skill_markdown("incident-response").encode(),
+            "incident-response/references/runbook.md": b"# Runbook\n",
+            "incident-response/scripts/page.sh": b"#!/bin/sh\n",
+        }
+    )
+    assert (await _publish(api.client, api.alice.headers, payload)).status_code == 201
+
+    version_root = api.store_root / "skills" / "incident-response" / "1.0.0"
+    skill = SdkSkill(
+        skill_id="incident-response", provider=LocalFileSystemSkillProvider(version_root)
+    )
+    resources = await skill.list_resources()
+
+    assert resources["references"] == ["runbook.md"]
+    assert resources["scripts"] == ["page.sh"]
+
+
+async def test_a_frontmatter_version_the_sdk_rejects_is_surfaced(api: ApiFixture) -> None:
+    """SDK v0.3 validates optional `version` frontmatter. 1.0 is a YAML float, not a semver."""
+    payload = _targz(
+        {
+            "incident-response/SKILL.md": (
+                b"---\nname: incident-response\n"
+                b"description: Guides an on-call engineer through an incident.\n"
+                b"version: 1.0\n---\n\nTriage.\n"
+            )
+        }
+    )
+    response = await _publish(api.client, api.alice.headers, payload)
+
+    assert response.status_code == 400
+    assert any("version" in detail for detail in response.json()["error"]["details"])
+    assert _published(api.store_root) == []
+
+
 async def test_a_zip_is_accepted_too(api: ApiFixture) -> None:
     payload = _zip({"incident-response/SKILL.md": skill_markdown("incident-response").encode()})
     response = await _publish(api.client, api.alice.headers, payload, filename="skill.zip")

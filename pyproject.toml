@@ -6,9 +6,8 @@ license = "MIT"
 package-mode = false
 
 [tool.poetry.dependencies]
-# Capped at <3.14 by agentskills-mcp-server, which the gateway composes.
-# The Hub cannot support a Python the SDK does not.
-python = ">=3.12,<3.14"
+# The Hub cannot support a Python the SDK does not. Since SDK v0.3 that is no longer a cap.
+python = ">=3.12,<4.0"
 agentskills-hub-core = { path = "packages/core/agentskills-hub-core", develop = true }
 agentskills-hub-api = { path = "packages/api/agentskills-hub-api", develop = true }
 agentskills-hub-gateway = { path = "packages/gateway/agentskills-hub-gateway", develop = true }
