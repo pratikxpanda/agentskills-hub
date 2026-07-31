@@ -33,25 +33,29 @@ def _run(cmd: list[str], *, check: bool = True) -> int:
     return result.returncode
 
 
+# conftest.py sits at the root so that mypy sees exactly one module named `conftest`.
+_SOURCES = ["packages/", "scripts/", "conftest.py"]
+
+
 def lint() -> None:
     """Run ruff linter (check only, no fixes)."""
-    _run([_PY, "-m", "ruff", "check", "packages/", "scripts/"])
+    _run([_PY, "-m", "ruff", "check", *_SOURCES])
 
 
 def lint_fix() -> None:
     """Run ruff linter with auto-fix."""
-    _run([_PY, "-m", "ruff", "check", "--fix", "packages/", "scripts/"])
+    _run([_PY, "-m", "ruff", "check", "--fix", *_SOURCES])
 
 
 def fmt() -> None:
     """Auto-format code with ruff."""
-    _run([_PY, "-m", "ruff", "format", "packages/", "scripts/"])
+    _run([_PY, "-m", "ruff", "format", *_SOURCES])
     lint_fix()
 
 
 def fmt_check() -> None:
     """Check formatting without changing files."""
-    _run([_PY, "-m", "ruff", "format", "--check", "packages/", "scripts/"])
+    _run([_PY, "-m", "ruff", "format", "--check", *_SOURCES])
 
 
 def typecheck() -> None:

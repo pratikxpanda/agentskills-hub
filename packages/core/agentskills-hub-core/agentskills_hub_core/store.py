@@ -60,7 +60,9 @@ class SkillStore(Protocol):
 
 
 class LocalFileSystemSkillStore:
-    def __init__(self, root: Path, limits: ArchiveLimits | None = None) -> None:
+    def __init__(self, root: Path | str, limits: ArchiveLimits | None = None) -> None:
+        # `str` is accepted so that layers forbidden from importing pathlib can still configure a
+        # root. Resolution happens here, once.
         self._root = Path(root).resolve()
         self._limits = limits or ArchiveLimits()
         self._skills = self._root / "skills"

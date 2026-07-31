@@ -120,6 +120,17 @@ Storage is SQLite plus a filesystem content store, deliberately: the Hub must ru
 a container, or in a customer's cloud without a rewrite. Azure is a documented deployment target,
 not a dependency.
 
+### Known limitations
+
+These are decisions, not omissions. Each has a milestone.
+
+| Limitation | Resolved in |
+|---|---|
+| **No roles.** Authentication proves which team a request belongs to; it does not grant or withhold permissions. Any authenticated team may publish. | v0.4 (Entra ID and RBAC) |
+| Failed-authentication rate limiting is per-process, so it only holds for a single instance. | v0.4 |
+| One environment per team, created automatically and named `default`. | v0.3 |
+| SQLite only. | v1.0 (PostgreSQL) |
+
 ## Roadmap
 
 | Milestone | Focus |

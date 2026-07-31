@@ -18,6 +18,12 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 DEFAULT_DATABASE_URL = "sqlite+aiosqlite:///./hub.db"
 
+# Layers above core annotate against these names rather than importing SQLAlchemy themselves. The
+# aliases are the seam: if the session type changes, it changes here.
+DatabaseEngine = AsyncEngine
+DatabaseSession = AsyncSession
+SessionFactory = async_sessionmaker[AsyncSession]
+
 
 def create_engine(url: str = DEFAULT_DATABASE_URL) -> AsyncEngine:
     return create_async_engine(url, future=True)
