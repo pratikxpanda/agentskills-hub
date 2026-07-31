@@ -11,6 +11,7 @@ from agentskills_core import validate_skill
 from agentskills_fs import LocalFileSystemSkillProvider
 
 from agentskills_hub_core import store as store_module
+from agentskills_hub_core.archives import ArchiveLimits, UnsafeArchiveError
 from agentskills_hub_core.identifiers import InvalidIdentifierError
 from agentskills_hub_core.store import (
     InvalidSkillArchiveError,
@@ -145,9 +146,55 @@ async def test_digest_is_returned_and_is_content_addressed(
         SKILL_ID, "1.0.2", make_archive(tmp_path / "c.zip", body="Different steps.")
     )
 
-    assert first == second
-    assert changed != first
-    assert len(first) == 64
+    assert first.digest == second.digest
+    assert changed.digest != first.digest
+    assert len(first.digest) == 64
+
+
+async def test_publish_reports_the_frontmatter_it_validated(
+    store: LocalFileSystemSkillStore, tmp_path: Path
+) -> None:
+    """Callers persist the description; making them re-read the tree would be a second source."""
+    published = await store.publish(SKILL_ID, "1.0.0", make_archive(tmp_path / "a.zip"))
+
+    assert published.description == "Guides an on-call engineer through an incident."
+    assert published.metadata["name"] == SKILL_ID
+
+
+async def test_a_stream_may_be_published_instead_of_a_path(
+    store: LocalFileSystemSkillStore, tmp_path: Path
+) -> None:
+    """The API layer cannot import tempfile, so it hands over the upload itself."""
+    archive = make_archive(tmp_path / "a.zip")
+
+    with archive.open("rb") as handle:
+        published = await store.publish(SKILL_ID, "1.0.0", handle)
+
+    assert store.exists(SKILL_ID, "1.0.0")
+    assert len(published.digest) == 64
+
+
+async def test_a_stream_larger_than_the_archive_limit_is_refused(tmp_path: Path) -> None:
+    store = LocalFileSystemSkillStore(tmp_path / "store", ArchiveLimits(max_archive_bytes=16))
+    archive = make_archive(tmp_path / "a.zip")
+
+    with archive.open("rb") as handle, pytest.raises(UnsafeArchiveError):
+        await store.publish(SKILL_ID, "1.0.0", handle)
+
+    assert not store.exists(SKILL_ID, "1.0.0")
+    assert list((tmp_path / "store").rglob("SKILL.md")) == []
+
+
+async def test_a_name_that_disagrees_with_skill_id_is_rejected(
+    store: LocalFileSystemSkillStore, tmp_path: Path
+) -> None:
+    archive = make_archive(tmp_path / "a.zip", name="something-else")
+
+    with pytest.raises(InvalidSkillArchiveError) as caught:
+        await store.publish(SKILL_ID, "1.0.0", archive)
+
+    assert caught.value.errors
+    assert not store.exists(SKILL_ID, "1.0.0")
 
 
 def test_identifiers_are_validated_before_a_path_is_built(

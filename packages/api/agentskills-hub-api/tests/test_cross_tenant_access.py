@@ -1,107 +1,53 @@
 """Cross-tenant access control.
 
-The spec asks for a dedicated module here, because this is the single control standing between one
-team and another team's instruction set in v0.1.
+A dedicated module, because this is the single control standing between one team and another
+team's instruction set in v0.1.
 """
 
 from __future__ import annotations
 
 import logging
-from collections.abc import AsyncIterator, Callable
 
 import pytest
-import pytest_asyncio
-from httpx import ASGITransport, AsyncClient
 
-from agentskills_hub_api.app import create_app
-from agentskills_hub_api.settings import Settings
 from agentskills_hub_core.database import create_engine, create_session_factory, session_scope
-from agentskills_hub_core.repositories import ApiKeyRepository, TeamRepository
+from agentskills_hub_core.repositories import ApiKeyRepository
 from agentskills_hub_core.security import mint_api_key
+from conftest import ApiFactory, ApiFixture
 
 
-class Credential:
-    def __init__(self, slug: str, token: str) -> None:
-        self.slug = slug
-        self.token = token
+async def test_health_needs_no_credential(api: ApiFixture) -> None:
+    response = await api.client.get("/api/health")
 
-    @property
-    def headers(self) -> dict[str, str]:
-        return {"Authorization": f"Bearer {self.token}"}
-
-
-@pytest_asyncio.fixture
-async def api(
-    database_url: str, tmp_path_factory: pytest.TempPathFactory, migrate: Callable[[str], None]
-) -> AsyncIterator[tuple[AsyncClient, Credential, Credential]]:
-    import asyncio
-
-    await asyncio.to_thread(migrate, database_url)
-    store_root = tmp_path_factory.mktemp("store")
-
-    engine = create_engine(database_url)
-    factory = create_session_factory(engine)
-    credentials: list[Credential] = []
-    async with session_scope(factory) as session:
-        for slug, name in (("checkout-squad", "Checkout Squad"), ("platform-team", "Platform")):
-            team, environment = await TeamRepository(session).create(slug, name)
-            _, token = await ApiKeyRepository(session).issue(team.id, environment.id)
-            credentials.append(Credential(slug, token))
-    await engine.dispose()
-
-    settings = Settings(database_url=database_url, store_root=str(store_root))
-    app = create_app(settings)
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://hub") as client:
-        yield client, credentials[0], credentials[1]
-
-
-async def test_health_needs_no_credential(
-    api: tuple[AsyncClient, Credential, Credential],
-) -> None:
-    client, _, _ = api
-    response = await client.get("/api/health")
     assert response.status_code == 200
     assert response.json()["status"] == "ok"
 
 
-async def test_a_valid_credential_resolves_to_its_own_team(
-    api: tuple[AsyncClient, Credential, Credential],
-) -> None:
-    client, alice, _ = api
-    response = await client.get(f"/api/teams/{alice.slug}", headers=alice.headers)
+async def test_a_valid_credential_resolves_to_its_own_team(api: ApiFixture) -> None:
+    response = await api.client.get(f"/api/teams/{api.alice.slug}", headers=api.alice.headers)
 
     assert response.status_code == 200
-    assert response.json()["slug"] == alice.slug
+    assert response.json()["slug"] == api.alice.slug
 
 
-async def test_team_a_cannot_read_team_b(
-    api: tuple[AsyncClient, Credential, Credential],
-) -> None:
-    client, alice, bob = api
-    response = await client.get(f"/api/teams/{bob.slug}", headers=alice.headers)
+async def test_team_a_cannot_read_team_b(api: ApiFixture) -> None:
+    response = await api.client.get(f"/api/teams/{api.bob.slug}", headers=api.alice.headers)
 
     assert response.status_code == 403
     assert response.json()["error"]["code"] == "team_mismatch"
 
 
-async def test_the_path_segment_never_selects_the_team(
-    api: tuple[AsyncClient, Credential, Credential],
-) -> None:
+async def test_the_path_segment_never_selects_the_team(api: ApiFixture) -> None:
     """A forged segment must not become the answer, even when it names a real team."""
-    client, alice, bob = api
-    forged = await client.get(f"/api/teams/{bob.slug}", headers=alice.headers)
-    honest = await client.get(f"/api/teams/{alice.slug}", headers=alice.headers)
+    forged = await api.client.get(f"/api/teams/{api.bob.slug}", headers=api.alice.headers)
+    honest = await api.client.get(f"/api/teams/{api.alice.slug}", headers=api.alice.headers)
 
     assert forged.status_code == 403
-    assert honest.json()["slug"] == alice.slug
+    assert honest.json()["slug"] == api.alice.slug
 
 
-async def test_a_missing_credential_is_rejected(
-    api: tuple[AsyncClient, Credential, Credential],
-) -> None:
-    client, alice, _ = api
-    response = await client.get(f"/api/teams/{alice.slug}")
+async def test_a_missing_credential_is_rejected(api: ApiFixture) -> None:
+    response = await api.client.get(f"/api/teams/{api.alice.slug}")
 
     assert response.status_code == 401
     assert response.json()["error"]["code"] == "unauthenticated"
@@ -111,12 +57,9 @@ async def test_a_missing_credential_is_rejected(
     "token",
     ["", "garbage", "ashub_only_two", "ashub__", "Bearer ashub_a_b", mint_api_key().token],
 )
-async def test_unknown_credentials_are_rejected_without_detail(
-    api: tuple[AsyncClient, Credential, Credential], token: str
-) -> None:
-    client, alice, _ = api
-    response = await client.get(
-        f"/api/teams/{alice.slug}", headers={"Authorization": f"Bearer {token}"}
+async def test_unknown_credentials_are_rejected_without_detail(api: ApiFixture, token: str) -> None:
+    response = await api.client.get(
+        f"/api/teams/{api.alice.slug}", headers={"Authorization": f"Bearer {token}"}
     )
 
     assert response.status_code == 401
@@ -126,70 +69,54 @@ async def test_unknown_credentials_are_rejected_without_detail(
     assert body["error"]["message"] == "Authentication failed."
 
 
-async def test_a_tampered_secret_is_rejected(
-    api: tuple[AsyncClient, Credential, Credential],
-) -> None:
-    client, alice, _ = api
-    scheme, prefix, secret = alice.token.split("_")
+async def test_a_tampered_secret_is_rejected(api: ApiFixture) -> None:
+    scheme, prefix, secret = api.alice.token.split("_")
     tampered = f"{scheme}_{prefix}_{'0' * len(secret)}"
 
-    response = await client.get(
-        f"/api/teams/{alice.slug}", headers={"Authorization": f"Bearer {tampered}"}
+    response = await api.client.get(
+        f"/api/teams/{api.alice.slug}", headers={"Authorization": f"Bearer {tampered}"}
     )
+
     assert response.status_code == 401
 
 
-async def test_a_revoked_credential_fails_closed(
-    api: tuple[AsyncClient, Credential, Credential], database_url: str
-) -> None:
-    client, alice, _ = api
-    _, prefix, _ = alice.token.split("_")
+async def test_a_revoked_credential_fails_closed(api: ApiFixture, database_url: str) -> None:
+    _, prefix, _ = api.alice.token.split("_")
 
     engine = create_engine(database_url)
-    factory = create_session_factory(engine)
-    async with session_scope(factory) as session:
+    async with session_scope(create_session_factory(engine)) as session:
         keys = ApiKeyRepository(session)
         key = await keys.get_by_prefix(prefix)
         assert key is not None
         await keys.revoke(key.id)
     await engine.dispose()
 
-    response = await client.get(f"/api/teams/{alice.slug}", headers=alice.headers)
+    response = await api.client.get(f"/api/teams/{api.alice.slug}", headers=api.alice.headers)
     assert response.status_code == 401
 
 
-async def test_repeated_failures_are_rate_limited(
-    database_url: str, tmp_path_factory: pytest.TempPathFactory, migrate: Callable[[str], None]
-) -> None:
-    import asyncio
+async def test_repeated_failures_are_rate_limited(api_factory: ApiFactory) -> None:
+    api = await api_factory(auth_failure_limit=3)
+    headers = {"Authorization": "Bearer ashub_deadbeef_cafe"}
 
-    await asyncio.to_thread(migrate, database_url)
-    settings = Settings(
-        database_url=database_url,
-        store_root=str(tmp_path_factory.mktemp("store")),
-        auth_failure_limit=3,
-    )
-    app = create_app(settings)
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://hub") as client:
-        headers = {"Authorization": "Bearer ashub_deadbeef_cafe"}
-        statuses = [
-            (await client.get("/api/teams/anyone", headers=headers)).status_code for _ in range(5)
-        ]
+    statuses = [
+        (await api.client.get("/api/teams/anyone", headers=headers)).status_code for _ in range(5)
+    ]
 
     assert statuses[:3] == [401, 401, 401]
     assert statuses[3:] == [429, 429]
 
 
 async def test_tokens_never_reach_the_logs(
-    api: tuple[AsyncClient, Credential, Credential], caplog: pytest.LogCaptureFixture
+    api: ApiFixture, caplog: pytest.LogCaptureFixture
 ) -> None:
-    client, alice, _ = api
     with caplog.at_level(logging.DEBUG):
-        await client.get(f"/api/teams/{alice.slug}", headers=alice.headers)
-        await client.get(
-            f"/api/teams/{alice.slug}", headers={"Authorization": f"Bearer {alice.token}x"}
+        await api.client.get(f"/api/teams/{api.alice.slug}", headers=api.alice.headers)
+        await api.client.get(
+            f"/api/teams/{api.alice.slug}",
+            headers={"Authorization": f"Bearer {api.alice.token}x"},
         )
 
-    _, _, secret = alice.token.split("_")
-    assert alice.token not in caplog.text
+    _, _, secret = api.alice.token.split("_")
+    assert api.alice.token not in caplog.text
     assert secret not in caplog.text

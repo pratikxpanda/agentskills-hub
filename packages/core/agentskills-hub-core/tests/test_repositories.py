@@ -128,6 +128,25 @@ async def test_api_key_identifies_team_and_environment(session: AsyncSession) ->
     assert refreshed.revoked_at is not None
 
 
+async def test_touch_coalesces_within_its_resolution(session: AsyncSession) -> None:
+    teams = TeamRepository(session)
+    team, environment = await teams.create("platform-team", "Platform")
+    keys = ApiKeyRepository(session)
+    key = await keys.create(team.id, environment.id, "hub_touch", "hash")
+    await session.commit()
+
+    first = datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC)
+
+    assert await keys.touch(key.id, first) is True
+    assert await keys.touch(key.id, first + timedelta(minutes=4)) is False
+    assert await keys.touch(key.id, first + timedelta(minutes=6)) is True
+    await session.commit()
+
+    refreshed = await keys.get_by_prefix("hub_touch")
+    assert refreshed is not None
+    assert refreshed.last_used_at == first + timedelta(minutes=6)
+
+
 async def test_skill_lifecycle_and_version_status_are_independent(
     session: AsyncSession,
 ) -> None:

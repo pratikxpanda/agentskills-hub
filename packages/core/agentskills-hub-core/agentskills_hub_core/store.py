@@ -15,17 +15,27 @@ from __future__ import annotations
 import asyncio
 import shutil
 import uuid
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Protocol
+from typing import IO, Any, Protocol
 
 from agentskills_core import Skill as SdkSkill
 from agentskills_core import validate_skill
 from agentskills_fs import LocalFileSystemSkillProvider
 
-from agentskills_hub_core.archives import ArchiveLimits, content_digest, extract
+from agentskills_hub_core.archives import ArchiveLimits, content_digest, extract, spool
 from agentskills_hub_core.identifiers import validate_skill_id, validate_version
 
 SKILL_FILE = "SKILL.md"
+
+
+@dataclass(frozen=True)
+class PublishedVersion:
+    """What a successful publish learned about the content, so callers need not re-read it."""
+
+    digest: str
+    description: str
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 class SkillStoreError(Exception):
@@ -55,8 +65,10 @@ class SkillStore(Protocol):
 
     def exists(self, skill_id: str, version: str) -> bool: ...
 
-    async def publish(self, skill_id: str, version: str, archive: Path) -> str:
-        """Store a version's content and return its digest."""
+    async def publish(
+        self, skill_id: str, version: str, archive: Path | IO[bytes]
+    ) -> PublishedVersion:
+        """Store a version's content and describe what was stored."""
 
 
 class LocalFileSystemSkillStore:
@@ -72,6 +84,10 @@ class LocalFileSystemSkillStore:
     def root(self) -> Path:
         return self._root
 
+    @property
+    def limits(self) -> ArchiveLimits:
+        return self._limits
+
     def version_root(self, skill_id: str, version: str) -> Path:
         validate_skill_id(skill_id)
         validate_version(version)
@@ -85,7 +101,9 @@ class LocalFileSystemSkillStore:
     def exists(self, skill_id: str, version: str) -> bool:
         return (self.version_root(skill_id, version) / skill_id / SKILL_FILE).is_file()
 
-    async def publish(self, skill_id: str, version: str, archive: Path) -> str:
+    async def publish(
+        self, skill_id: str, version: str, archive: Path | IO[bytes]
+    ) -> PublishedVersion:
         destination = self.version_root(skill_id, version)
         if destination.exists():
             raise VersionAlreadyPublishedError(
@@ -95,18 +113,37 @@ class LocalFileSystemSkillStore:
         workspace = self._staging / uuid.uuid4().hex
         try:
             staged = await asyncio.to_thread(self._stage, skill_id, archive, workspace)
-            errors = await validate_skill(
-                SdkSkill(skill_id=skill_id, provider=LocalFileSystemSkillProvider(staged))
-            )
+            skill = SdkSkill(skill_id=skill_id, provider=LocalFileSystemSkillProvider(staged))
+            errors = await validate_skill(skill)
             if errors:
                 raise InvalidSkillArchiveError(
                     f"{skill_id} {version} failed validation", errors=errors
                 )
-            return await asyncio.to_thread(self._commit, staged, destination)
+
+            metadata = await skill.get_metadata()
+            # validate_skill already enforces this. Asserted again because the failure it guards
+            # against is a silently mis-filed skill, which nothing downstream would notice.
+            if metadata.get("name") != skill_id:
+                raise InvalidSkillArchiveError(
+                    f"{skill_id} {version} failed validation",
+                    errors=[f"name {metadata.get('name')!r} does not match skill_id {skill_id!r}"],
+                )
+
+            digest = await asyncio.to_thread(self._commit, staged, destination)
+            return PublishedVersion(
+                digest=digest,
+                description=str(metadata.get("description", "")),
+                metadata=metadata,
+            )
         finally:
             await asyncio.to_thread(shutil.rmtree, workspace, True)
 
-    def _stage(self, skill_id: str, archive: Path, workspace: Path) -> Path:
+    def _stage(self, skill_id: str, archive: Path | IO[bytes], workspace: Path) -> Path:
+        if not isinstance(archive, Path):
+            upload = workspace / "upload"
+            spool(archive, upload, self._limits.max_archive_bytes)
+            archive = upload
+
         extracted = workspace / "extracted"
         extract(archive, extracted, self._limits)
 
@@ -137,6 +174,7 @@ __all__ = [
     "SKILL_FILE",
     "InvalidSkillArchiveError",
     "LocalFileSystemSkillStore",
+    "PublishedVersion",
     "SkillStore",
     "SkillStoreError",
     "VersionAlreadyPublishedError",

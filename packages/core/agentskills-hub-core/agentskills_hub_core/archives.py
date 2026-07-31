@@ -32,6 +32,8 @@ class UnsupportedArchiveError(Exception):
 
 @dataclass(frozen=True)
 class ArchiveLimits:
+    # The first limit is on the compressed upload, the rest on what it expands to.
+    max_archive_bytes: int = 20 * 1024 * 1024
     max_total_bytes: int = 50 * 1024 * 1024
     max_file_bytes: int = 10 * 1024 * 1024
     max_members: int = 2000
@@ -139,6 +141,23 @@ def _extract_tar(archive: Path, root: Path, limits: ArchiveLimits) -> None:
                 raise UnsafeArchiveError(f"archive member {member.name!r} has no content")
             with source:
                 _write_member(source, target, budget)
+
+
+def spool(source: IO[bytes], target: Path, max_bytes: int) -> None:
+    """Write an uploaded stream to `target`, refusing it past `max_bytes`.
+
+    Exists so that layers barred from importing `tempfile` can still hand over an upload: the
+    stream lands inside the store's own staging workspace, which the caller already cleans up.
+    A declared Content-Length is a claim, so the count is of bytes that actually arrive.
+    """
+    target.parent.mkdir(parents=True, exist_ok=True)
+    written = 0
+    with target.open("wb") as handle:
+        while chunk := source.read(_CHUNK):
+            written += len(chunk)
+            if written > max_bytes:
+                raise UnsafeArchiveError(f"upload exceeds the {max_bytes} byte archive limit")
+            handle.write(chunk)
 
 
 def extract(archive: Path, destination: Path, limits: ArchiveLimits | None = None) -> None:

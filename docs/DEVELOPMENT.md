@@ -141,11 +141,49 @@ Two operational notes:
 - **The rate limiter is per-process.** `FixedWindowLimiter` counts failed authentications in
   memory, keyed by source address. It is correct for the single instance v0.1 deploys and wrong
   the moment there are two; a shared counter arrives with horizontal scaling in v0.4.
-- **`last_used_at` is written after the response**, via a background task, so a write never sits
-  on the request's critical path.
+- **`last_used_at` is coalesced, not backgrounded.** `ApiKeyRepository.touch` joins the
+  transaction the request already has and writes at most once per five minutes, so almost every
+  authenticated request still performs no write. A `BackgroundTask` was tried first and
+  deadlocked: FastAPI runs background tasks *before* `yield`-dependency teardown, so the
+  request's write transaction is still open and a second SQLite connection blocks on it.
 
 Roles do not exist yet. Any authenticated team may publish. This is a stated v0.1 limitation, not
 an oversight — see the README.
+
+## Publishing
+
+`POST /api/skills` takes multipart form data: `archive` (tar.gz or zip), `skill_id`, `version`,
+and an optional `tags` JSON array. The order inside the handler is fixed and none of it is
+reorderable, because content that reaches the store reaches an agent's context verbatim:
+
+1. Authenticate, and reject before reading a byte of the body if that fails.
+2. Validate `skill_id` and `version` syntactically.
+3. Refuse a version that already exists.
+4. Spool the upload into the store's staging workspace, under `max_archive_bytes`.
+5. Extract under the remaining limits.
+6. Validate with the SDK. **Its error strings are returned verbatim**, as `error.details` — the
+   Hub does not paraphrase spec errors, so an author sees what the `agentskills` CLI would say.
+7. Assert frontmatter `name` equals `skill_id`.
+8. Commit the staging directory, then write the `skill` and `skill_version` rows.
+
+If step 8's database write fails after the filesystem commit, the orphaned directory is
+unreferenced and invisible. Reconciliation is a v0.2 chore.
+
+Every rejection leaves nothing under `skills/`, because everything before the commit happens
+inside a staging directory that is removed in a `finally`. There is a test per rejection path
+asserting exactly that.
+
+Limits are configurable and each has its own test:
+
+| Setting | Environment variable | Default |
+|---|---|---|
+| Compressed upload | `HUB_MAX_ARCHIVE_BYTES` | 20 MiB |
+| Uncompressed total | `HUB_MAX_TOTAL_BYTES` | 50 MiB |
+| Single file | `HUB_MAX_FILE_BYTES` | 10 MiB |
+| Member count | `HUB_MAX_MEMBERS` | 2000 |
+
+Tags are recorded when a skill is first created and ignored on later versions. Changing another
+team's tags is a v0.2 question with an authorisation answer attached.
 
 ## Commands
 
