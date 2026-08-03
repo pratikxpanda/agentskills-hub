@@ -267,10 +267,27 @@ class SubscriptionRepository:
         skill_id: uuid.UUID,
         version: str,
         *,
+        actor: str | None = None,
         origin: SubscriptionOrigin = SubscriptionOrigin.MANUAL,
         status: SubscriptionStatus = SubscriptionStatus.ACTIVE,
     ) -> Subscription:
+        """Subscribe, reviving a previously revoked row rather than inserting beside it.
+
+        The uniqueness constraint is on `(environment_id, skill_id)` and revoked rows are kept for
+        attribution, so a second insert would be refused by the database.
+        """
         validate_version(version)
+        existing = await self.get(environment_id, skill_id, status=None)
+        if existing is not None:
+            existing.version = version
+            existing.origin = origin
+            existing.status = status
+            existing.updated_at = utcnow()
+            existing.updated_by = actor
+            self._session.add(existing)
+            await self._session.flush()
+            return existing
+
         subscription = Subscription(
             team_id=team_id,
             environment_id=environment_id,
@@ -278,31 +295,64 @@ class SubscriptionRepository:
             version=version,
             origin=origin,
             status=status,
+            created_by=actor,
         )
         self._session.add(subscription)
         await self._session.flush()
         return subscription
 
-    async def list_for_environment(self, environment_id: uuid.UUID) -> list[Subscription]:
-        result = await self._session.exec(
-            select(Subscription).where(Subscription.environment_id == environment_id)
-        )
+    async def repin(
+        self, subscription: Subscription, version: str, *, actor: str | None = None
+    ) -> Subscription:
+        validate_version(version)
+        subscription.version = version
+        subscription.updated_at = utcnow()
+        subscription.updated_by = actor
+        self._session.add(subscription)
+        await self._session.flush()
+        return subscription
+
+    async def list_for_environment(
+        self,
+        environment_id: uuid.UUID,
+        *,
+        status: SubscriptionStatus | None = SubscriptionStatus.ACTIVE,
+    ) -> list[Subscription]:
+        statement = select(Subscription).where(Subscription.environment_id == environment_id)
+        if status is not None:
+            statement = statement.where(Subscription.status == status)
+        result = await self._session.exec(statement)
         return list(result.all())
 
-    async def get(self, environment_id: uuid.UUID, skill_id: uuid.UUID) -> Subscription | None:
-        result = await self._session.exec(
-            select(Subscription).where(
-                Subscription.environment_id == environment_id,
-                Subscription.skill_id == skill_id,
-            )
+    async def get(
+        self,
+        environment_id: uuid.UUID,
+        skill_id: uuid.UUID,
+        *,
+        status: SubscriptionStatus | None = SubscriptionStatus.ACTIVE,
+    ) -> Subscription | None:
+        statement = select(Subscription).where(
+            Subscription.environment_id == environment_id,
+            Subscription.skill_id == skill_id,
         )
+        if status is not None:
+            statement = statement.where(Subscription.status == status)
+        result = await self._session.exec(statement)
         return result.first()
 
-    async def unsubscribe(self, environment_id: uuid.UUID, skill_id: uuid.UUID) -> bool:
+    async def unsubscribe(
+        self, environment_id: uuid.UUID, skill_id: uuid.UUID, *, actor: str | None = None
+    ) -> bool:
+        """Revoke rather than delete. Returns whether anything changed, so callers can be
+        idempotent without a second read."""
         subscription = await self.get(environment_id, skill_id)
         if subscription is None:
             return False
-        await self._session.delete(subscription)
+        subscription.status = SubscriptionStatus.REVOKED
+        subscription.updated_at = utcnow()
+        subscription.updated_by = actor
+        self._session.add(subscription)
+        await self._session.flush()
         return True
 
 

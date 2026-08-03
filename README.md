@@ -130,6 +130,7 @@ These are decisions, not omissions. Each has a milestone.
 | Failed-authentication rate limiting is per-process, so it only holds for a single instance. | v0.4 |
 | Catalog search is a `LIKE` scan over ids, descriptions, and tags. Correct, and linear in catalog size. | v0.3 (search) |
 | One environment per team, created automatically and named `default`. | v0.3 |
+| Subscription changes are attributed to the API key that made them, not to a person, and are recorded on the row rather than in an append-only log. | v0.2 (audit log), v0.4 (Entra ID) |
 | SQLite only. | v1.0 (PostgreSQL) |
 
 ## Roadmap

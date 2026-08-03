@@ -121,6 +121,12 @@ class SkillVersion(SQLModel, table=True):
 
 
 class Subscription(SQLModel, table=True):
+    """A team's pinned use of one skill version.
+
+    Rows are revoked rather than deleted. Unsubscribing is a mutation like any other and has to
+    stay attributable, and the uniqueness constraint means a later re-subscribe reuses this row.
+    """
+
     __tablename__ = "subscription"
     __table_args__ = (
         UniqueConstraint("environment_id", "skill_id", name="uq_subscription_environment_skill"),
@@ -138,6 +144,11 @@ class Subscription(SQLModel, table=True):
         sa_column=_enum_column(SubscriptionStatus, "subscription_status")
     )
     created_at: datetime = Field(default_factory=utcnow, sa_type=UtcDateTime)
+    # There are no users until v0.4, so the credential is the principal. The key prefix identifies
+    # it without being a secret.
+    created_by: str | None = Field(default=None, max_length=16)
+    updated_at: datetime | None = Field(default=None, sa_type=UtcDateTime)
+    updated_by: str | None = Field(default=None, max_length=16)
 
 
 __all__ = [

@@ -7,8 +7,6 @@ against is a response that looks fine and forces every client to fetch each row 
 
 from __future__ import annotations
 
-import io
-import tarfile
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -26,7 +24,7 @@ from agentskills_hub_core import (
     create_session_factory,
     session_scope,
 )
-from conftest import ApiFixture, Credential, skill_markdown
+from conftest import ApiFixture, Credential, skill_archive
 
 _FIELDS = {
     "skill_id",
@@ -42,24 +40,6 @@ _FIELDS = {
     "is_subscribed",
     "subscribed_version",
 }
-
-
-def _archive(
-    skill_id: str, description: str | None = None, extra: dict[str, bytes] | None = None
-) -> bytes:
-    markdown = (
-        skill_markdown(skill_id, description=description)
-        if description
-        else skill_markdown(skill_id)
-    )
-    files = {f"{skill_id}/SKILL.md": markdown.encode(), **(extra or {})}
-    buffer = io.BytesIO()
-    with tarfile.open(fileobj=buffer, mode="w:gz") as tf:
-        for name, payload in files.items():
-            info = tarfile.TarInfo(name)
-            info.size = len(payload)
-            tf.addfile(info, io.BytesIO(payload))
-    return buffer.getvalue()
 
 
 async def _publish(
@@ -82,7 +62,7 @@ async def _publish(
         files={
             "archive": (
                 "skill.tar.gz",
-                _archive(skill_id, description, extra),
+                skill_archive(skill_id, description, extra),
                 "application/gzip",
             )
         },

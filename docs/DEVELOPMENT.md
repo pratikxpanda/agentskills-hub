@@ -226,6 +226,40 @@ caller's own subscriptions — rather than one plus N.
 Latest version is chosen by semver precedence, not string order: `1.10.0` follows `1.9.0`, and no
 portable SQL expression says so, which is why `version_sort_key` sorts in Python.
 
+## Subscriptions
+
+A subscription is the only thing that changes what an agent sees. Four endpoints, all scoped to
+the calling team:
+
+| Endpoint | Behaviour |
+|---|---|
+| `POST /api/teams/{team}/subscriptions` | `{skill_id, version}`. `201`, or `409` if already subscribed. |
+| `GET /api/teams/{team}/subscriptions` | Active pins, with `latest_version` and `update_available`. |
+| `PATCH /api/teams/{team}/subscriptions/{skill_id}` | Change the pinned version. |
+| `DELETE /api/teams/{team}/subscriptions/{skill_id}` | Unsubscribe. Idempotent. |
+
+Version is required and exact. `latest`, `1.x`, and `^1.0.0` are all rejected as invalid
+identifiers, not interpreted — see
+[ADR 0003](https://github.com/pratikxpanda/agentskills-hub/blob/main/docs/adr/0003-explicit-version-pinning.md).
+A floating pin means republishing a skill rewrites the system prompt of every subscribed agent,
+with no review and no way to correlate a behaviour change to a cause. The compensating feature is
+`update_available` on the list, so a stale pin is visible without going looking for it.
+
+Three rules that are easy to break later:
+
+- **Every refusal to subscribe is the same refusal.** A missing skill, an unpublished version, a
+  draft, and an archived skill all return `404 not_subscribable` with an identical body. `403`
+  would confirm a skill exists, and so would a helpfully specific `404`.
+- **Unsubscribing revokes, it does not delete.** Every mutation has to stay attributable to a
+  principal and a timestamp, and a deleted row attributes nothing. Re-subscribing reuses the same
+  row, which is also what the `(environment_id, skill_id)` uniqueness constraint requires.
+- **The credential is the principal.** There are no users until v0.4, so `created_by` and
+  `updated_by` hold the API key prefix. The prefix identifies the credential without being the
+  secret.
+
+Unlisted skills are subscribable. Unlisted means "not advertised", not "secret" — the same rule
+the catalog detail endpoint follows.
+
 ## Commands
 
 `scripts/dev.py` is the single entry point. The first block matches the SDK exactly.

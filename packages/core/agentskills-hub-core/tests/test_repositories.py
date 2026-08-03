@@ -20,7 +20,7 @@ from agentskills_hub_core.enums import (
     Visibility,
 )
 from agentskills_hub_core.identifiers import InvalidIdentifierError
-from agentskills_hub_core.models import Team
+from agentskills_hub_core.models import Subscription, Team
 from agentskills_hub_core.repositories import (
     DEFAULT_ENVIRONMENT_NAME,
     ApiKeyRepository,
@@ -254,6 +254,11 @@ async def test_catalog_tokens_and_digest_are_recorded(session: AsyncSession) -> 
 
 
 async def test_one_subscription_per_skill_per_environment(session: AsyncSession) -> None:
+    """The constraint is in the schema, not in the repository.
+
+    `subscribe` reuses an existing row rather than inserting beside it, so a second row has to be
+    written directly to prove the database would have refused it anyway.
+    """
     teams = TeamRepository(session)
     team, environment = await teams.create("checkout-squad", "Checkout Squad")
     skills = SkillRepository(session)
@@ -267,9 +272,49 @@ async def test_one_subscription_per_skill_per_environment(session: AsyncSession)
     assert subscription.origin is SubscriptionOrigin.MANUAL
     assert subscription.status is SubscriptionStatus.ACTIVE
 
+    session.add(
+        Subscription(
+            team_id=team.id,
+            environment_id=environment.id,
+            skill_id=skill.id,
+            version="2.0.0",
+            origin=SubscriptionOrigin.MANUAL,
+            status=SubscriptionStatus.ACTIVE,
+        )
+    )
     with pytest.raises(IntegrityError):
-        await subscriptions.subscribe(team.id, environment.id, skill.id, "2.0.0")
         await session.commit()
+    await session.rollback()
+
+
+async def test_resubscribing_reuses_the_row_that_records_who_revoked_it(
+    session: AsyncSession,
+) -> None:
+    teams = TeamRepository(session)
+    team, environment = await teams.create("checkout-squad", "Checkout Squad")
+    skills = SkillRepository(session)
+    skill = await skills.create("pci-payment-review", team.id)
+
+    subscriptions = SubscriptionRepository(session)
+    first = await subscriptions.subscribe(
+        team.id, environment.id, skill.id, "1.0.0", actor="ask_aaaa"
+    )
+    assert await subscriptions.unsubscribe(environment.id, skill.id, actor="ask_bbbb") is True
+    assert first.status is SubscriptionStatus.REVOKED
+    assert first.updated_by == "ask_bbbb"
+
+    second = await subscriptions.subscribe(
+        team.id, environment.id, skill.id, "2.0.0", actor="ask_cccc"
+    )
+    await session.commit()
+
+    assert second.id == first.id
+    assert second.status is SubscriptionStatus.ACTIVE
+    assert second.version == "2.0.0"
+    # The row that recorded the first subscription is the row that carries the pin now, so the
+    # original attribution survives a revoke-and-return cycle.
+    assert second.created_by == "ask_aaaa"
+    assert second.updated_by == "ask_cccc"
 
 
 async def test_subscriptions_are_listed_and_removed_by_environment(
@@ -290,3 +335,6 @@ async def test_subscriptions_are_listed_and_removed_by_environment(
     await session.commit()
     assert await subscriptions.list_for_environment(environment.id) == []
     assert await subscriptions.unsubscribe(environment.id, uuid.uuid4()) is False
+    # Revoked, not gone: the row is still there for anyone asking who unsubscribed and when.
+    revoked = await subscriptions.list_for_environment(environment.id, status=None)
+    assert [item.status for item in revoked] == [SubscriptionStatus.REVOKED]
