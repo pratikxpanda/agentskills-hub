@@ -62,7 +62,7 @@ known-first-party = [
 
 [tool.mypy]
 python_version = "3.12"
-files = ["packages", "scripts", "conftest.py"]
+files = ["packages", "scripts", "tests", "conftest.py"]
 warn_unused_configs = true
 warn_redundant_casts = true
 warn_unused_ignores = true
