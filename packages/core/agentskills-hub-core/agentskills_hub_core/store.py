@@ -13,6 +13,7 @@ see ADR 0002.
 from __future__ import annotations
 
 import asyncio
+import os
 import shutil
 import uuid
 from dataclasses import dataclass, field
@@ -96,7 +97,9 @@ class LocalFileSystemSkillStore:
         # root. Resolution happens here, once.
         self._root = Path(root).resolve()
         self._limits = limits or ArchiveLimits()
-        self._skills = self._root / "skills"
+        # Resolved here so that a symlinked store directory is followed once, rather than on every
+        # path built under it.
+        self._skills = (self._root / "skills").resolve()
         self._staging = self._root / "staging"
 
     @property
@@ -110,15 +113,26 @@ class LocalFileSystemSkillStore:
     def version_root(self, skill_id: str, version: str) -> Path:
         validate_skill_id(skill_id)
         validate_version(version)
-        candidate = (self._skills / skill_id / version).resolve()
-        # Belt and braces: the identifier patterns already exclude separators, but the assertion
-        # costs nothing and this is the path that trusts them.
-        if self._skills not in candidate.parents:
+
+        # Both identifiers reach here straight from a URL path, so containment is established the
+        # way a scanner can follow as well as a reader: normalise the join, then require the store
+        # root as a literal prefix. The patterns above already exclude separators and `..`; this is
+        # the second of the two independent reasons a traversal cannot get through.
+        root = str(self._skills)
+        candidate = os.path.normpath(os.path.join(root, skill_id, version))
+        if not candidate.startswith(root + os.sep):
             raise SkillStoreError(f"resolved path for {skill_id} {version} escapes the store")
-        return candidate
+        return Path(candidate)
+
+    def skill_dir(self, skill_id: str, version: str) -> Path:
+        """The SDK skill directory inside a version root."""
+        root = self.version_root(skill_id, version)
+        # Taken from the validated path rather than from the argument a second time: the inner
+        # segment is by construction the same one `version_root` already proved safe.
+        return root / root.parent.name
 
     def exists(self, skill_id: str, version: str) -> bool:
-        return (self.version_root(skill_id, version) / skill_id / SKILL_FILE).is_file()
+        return (self.skill_dir(skill_id, version) / SKILL_FILE).is_file()
 
     async def publish(
         self, skill_id: str, version: str, archive: Path | IO[bytes]
