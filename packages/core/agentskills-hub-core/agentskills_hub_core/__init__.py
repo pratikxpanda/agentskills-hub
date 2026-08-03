@@ -52,6 +52,7 @@ from agentskills_hub_core.models import (
     Subscription,
     Team,
 )
+from agentskills_hub_core.ratelimit import FixedWindowLimiter
 from agentskills_hub_core.repositories import (
     DEFAULT_ENVIRONMENT_NAME,
     ApiKeyRepository,
@@ -96,6 +97,7 @@ __all__ = [
     "DatabaseEngine",
     "DatabaseSession",
     "Environment",
+    "FixedWindowLimiter",
     "InvalidCursorError",
     "InvalidIdentifierError",
     "InvalidSkillArchiveError",

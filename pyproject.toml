@@ -135,3 +135,18 @@ type = "forbidden"
 source_modules = ["agentskills_hub_api", "agentskills_hub_gateway", "agentskills_hub_cli"]
 forbidden_modules = ["sqlalchemy", "sqlmodel", "alembic"]
 allow_indirect_imports = true
+
+# Item 8's acceptance criterion, made mechanical: the Hub defines no MCP tool and no skill
+# provider. Reaching `mcp` directly is what writing one would require, so forbidding the import
+# is what stops the SDK being reimplemented here one convenience at a time.
+[[tool.importlinter.contracts]]
+name = "MCP is used only through the SDK server"
+type = "forbidden"
+source_modules = [
+    "agentskills_hub_core",
+    "agentskills_hub_api",
+    "agentskills_hub_gateway",
+    "agentskills_hub_cli",
+]
+forbidden_modules = ["mcp"]
+allow_indirect_imports = true

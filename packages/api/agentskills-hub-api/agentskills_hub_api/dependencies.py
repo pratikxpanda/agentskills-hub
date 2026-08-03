@@ -17,12 +17,12 @@ from fastapi import Depends, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from agentskills_hub_api.errors import ApiError
-from agentskills_hub_api.ratelimit import FixedWindowLimiter
 from agentskills_hub_api.settings import Settings
 from agentskills_hub_core import (
     ApiKeyRepository,
     DatabaseEngine,
     DatabaseSession,
+    FixedWindowLimiter,
     LocalFileSystemSkillStore,
     SessionFactory,
     TeamPrincipal,

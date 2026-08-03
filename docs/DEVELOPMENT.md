@@ -260,6 +260,52 @@ Three rules that are easy to break later:
 Unlisted skills are subscribable. Unlisted means "not advertised", not "secret" — the same rule
 the catalog detail endpoint follows.
 
+## MCP gateway
+
+The data plane. `agentskills-hub-gateway` serves each team its subscribed skills over MCP at
+`/mcp/{team}`, and nothing else. There is also `GET /mcp/{team}/check`, which performs a real
+composition and reports what it found, so a team can verify its wiring without an agent:
+
+```console
+$ curl -H "Authorization: Bearer $HUB_TOKEN" http://localhost:8000/mcp/checkout-squad/check
+{"team":"checkout-squad","skill_count":2,"skills":["incident-response"],"unavailable":[]}
+```
+
+The whole of the gateway's logic is `compose()`: read the pins, point one SDK provider at each
+pinned version's directory in the store, hand the registry to `agentskills-mcp-server`. **The Hub
+defines no `SkillProvider`, no frontmatter parser, and no MCP tool.** If a tool is missing or
+wrong, it is an SDK issue, not a Hub one. An import contract — "MCP is used only through the SDK
+server" — makes that mechanical: no package here may import `mcp`, because writing a tool is what
+reaching for it would mean.
+
+Four things worth knowing before changing this:
+
+- **The transport is stateless and the registry is per request.** `StreamableHTTPSessionManager`
+  can only be run once per instance, so a stateful session would pin a client to the registry it
+  first connected with, and "unsubscribing removes the skill from the next connection" would stop
+  being true. Stateless makes a connection a request. The cost is re-reading each subscribed
+  `SKILL.md` per request; caching is v0.3 and is gated on the SDK's provider cache.
+- **Authentication happens before composition.** Composing reads the store, and an unauthenticated
+  caller must not be able to cause that work. Failed attempts are throttled by the same
+  `FixedWindowLimiter` the API uses — it lives in core so the two edges cannot drift apart.
+- **One unreadable skill costs that skill, not the session.** A pin whose content is missing from
+  the store, or that the SDK refuses to register, is skipped and named in `unavailable`. A team
+  whose fifth skill is broken still gets the other four.
+- **`HUB_ALLOWED_HOSTS` is not optional in a deployment.** The MCP transport enforces DNS-rebinding
+  protection against an allowlist that defaults to loopback only, so a Hub behind a real hostname
+  answers `421` to everything until it is set. It fails closed, and it says so in the logs.
+
+| Variable | Default |
+|---|---|
+| `HUB_ALLOWED_HOSTS` | `127.0.0.1:*,localhost:*,[::1]:*` |
+| `HUB_ALLOWED_ORIGINS` | `http://127.0.0.1:*,http://localhost:*,http://[::1]:*` |
+| `HUB_MCP_SERVER_NAME` | `Agent Skills Hub` |
+
+The gateway reads `HUB_DATABASE_URL` and `HUB_STORE_ROOT` too, from its own settings type rather
+than the API's — an import contract forbids the two edges from depending on each other, which is
+what makes running them in one process a deployment choice rather than a coupling. Nothing in this
+repository composes both yet; that arrives with the container image in v0.1 item 11.
+
 ## Commands
 
 `scripts/dev.py` is the single entry point. The first block matches the SDK exactly.
