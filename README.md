@@ -131,6 +131,7 @@ These are decisions, not omissions. Each has a milestone.
 | Catalog search is a `LIKE` scan over ids, descriptions, and tags. Correct, and linear in catalog size. | v0.3 (search) |
 | One environment per team, created automatically and named `default`. | v0.3 |
 | Subscription changes are attributed to the API key that made them, not to a person, and are recorded on the row rather than in an append-only log. | v0.2 (audit log), v0.4 (Entra ID) |
+| The MCP gateway rebuilds a team's registry on every request, re-reading each subscribed `SKILL.md`. Correct and trivially isolated; linear in subscriptions per request. | v0.3 (caching) |
 | SQLite only. | v1.0 (PostgreSQL) |
 
 ## Roadmap

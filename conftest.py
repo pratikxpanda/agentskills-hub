@@ -161,3 +161,71 @@ async def api_factory(database_url: str, tmp_path: Path) -> AsyncIterator[ApiFac
 @pytest_asyncio.fixture
 async def api(api_factory: ApiFactory) -> ApiFixture:
     return await api_factory()
+
+
+@dataclass(frozen=True)
+class GatewayFixture:
+    """The API and the gateway over one database and one store, as they are deployed."""
+
+    api: ApiFixture
+    transport: ASGITransport
+    url: Callable[[Credential], str]
+    client_factory: Callable[[Credential], Any]
+    check: Callable[..., Awaitable[Any]]
+
+
+@pytest_asyncio.fixture
+async def gateway(api: ApiFixture, database_url: str) -> AsyncIterator[GatewayFixture]:
+    from httpx import Timeout
+
+    from agentskills_hub_gateway import GatewaySettings, create_gateway_app
+
+    app = create_gateway_app(
+        GatewaySettings(
+            database_url=database_url,
+            store_root=str(api.store_root),
+            allowed_hosts=("gateway",),
+            allowed_origins=(),
+        )
+    )
+    transport = ASGITransport(app=app)
+
+    def url(credential: Credential) -> str:
+        return f"http://gateway/mcp/{credential.slug}"
+
+    def client_factory(credential: Credential) -> Any:
+        """An httpx client the MCP client will use, wired straight into the ASGI app.
+
+        The MCP client is the real one: anything it cannot do here, an agent cannot do either.
+        """
+
+        def factory(
+            headers: dict[str, str] | None = None,
+            timeout: Timeout | None = None,
+            auth: Any = None,
+        ) -> AsyncClient:
+            return AsyncClient(
+                transport=transport,
+                headers={**(headers or {}), **credential.headers},
+                timeout=timeout,
+                auth=auth,
+            )
+
+        return factory
+
+    async with AsyncClient(transport=transport, base_url="http://gateway") as plain:
+
+        async def check(credential: Credential, slug: str | None = None) -> Any:
+            return await plain.get(
+                f"/mcp/{slug or credential.slug}/check", headers=credential.headers
+            )
+
+        yield GatewayFixture(
+            api=api,
+            transport=transport,
+            url=url,
+            client_factory=client_factory,
+            check=check,
+        )
+
+    await app.state.gateway.dispose()
