@@ -48,7 +48,7 @@ agentskills-hub/
 │   ├── api/agentskills-hub-api/          # FastAPI: catalog, publish, subscriptions, auth
 │   ├── gateway/agentskills-hub-gateway/  # per-team MCP endpoint
 │   └── cli/agentskills-hub-cli/          # v0.2
-├── web/                                  # React SPA (not built yet)
+├── web/                                  # React SPA: catalog, skill, subscriptions, publish
 ├── deploy/                               # Dockerfile, compose, Azure Container Apps (not built yet)
 ├── examples/
 │   ├── skills/                           # seed corpus
@@ -333,6 +333,13 @@ The Hub adds a few of its own:
 | `python scripts/dev.py migrate` | Alembic upgrade to head |
 | `python scripts/dev.py migrate:down` | Alembic downgrade one revision |
 | `python scripts/dev.py migration "message"` | Autogenerate a migration from the models |
+| `python scripts/dev.py web:install` | `npm ci` in `web/` |
+| `python scripts/dev.py web` | Lint, test, and build the UI |
+| `python scripts/dev.py web:dev` | Vite dev server, proxying `/api` and `/mcp` to the Hub |
+
+The `web` tasks are deliberately **not** part of `check`. Everything the Python side needs must
+stay runnable on a machine with no Node installed; CI runs the UI as a separate job for the same
+reason.
 
 `examples` is deliberately not a local reimplementation of the spec rules, and CI installs the SDK
 unpinned to run it. If a published SDK release stops accepting the example skills, that is a
@@ -349,6 +356,42 @@ Not built yet:
 
 Run `check` and `test` before pushing; CI runs the same commands.
 
+## Web UI
+
+```bash
+python scripts/dev.py web:install
+HUB_ORIGIN=http://127.0.0.1:8000 python scripts/dev.py web:dev
+```
+
+Four pages — catalog, skill detail, subscriptions, publish — in `web/`, React and Vite, no
+component library. Decisions worth knowing before changing anything there:
+
+**The SPA is always same-origin.** The dev server proxies `/api` and `/mcp` to `HUB_ORIGIN`, and in
+production the same server fronts the API and the static files. The Hub therefore ships no CORS
+middleware at all, and `connect-src 'self'` in the CSP is a policy the app genuinely satisfies
+rather than one relaxed on the first day it becomes inconvenient.
+
+**The API key lives in memory for the tab, and nowhere else.** No `localStorage`, no
+`sessionStorage`, no cookie. A reload signs you out; that is the trade, and a test asserts both
+storages stay empty after signing in. Sign-in asks for the team slug as well as the key because
+the API has no "who am I" route — every path is scoped to a slug the caller supplies.
+
+**Skill bodies are untrusted input rendered as HTML.** Two independent layers, both of which have
+been verified to be load-bearing by deliberately removing them: `marked` is configured with a
+renderer that escapes raw HTML rather than passing it through, and the result goes through
+DOMPurify with an allowlist of tags, two attributes, and a URL scheme regexp. `Markdown` in
+`web/src/components/widgets.tsx` is the only `dangerouslySetInnerHTML` in the application. The CSP
+is the third layer, and the one that assumes the first two will eventually fail.
+
+**The CSP is injected at build time only,** by a Vite plugin, as a `<meta>` tag — the dev server
+needs inline module scripts, so a policy strict enough to be worth having cannot also apply in
+development. A real header from whatever serves the built files is strictly better; the meta tag
+is the floor. The directive list is in `web/src/csp.ts` so that a test can assert on it.
+
+**There is no router dependency.** `react-router-dom` carried a live high-severity advisory for a
+React Server Components feature this SPA does not use, so `web/src/routes.ts` is about fifty lines
+of `pushState` and `popstate`. `npm audit --audit-level=high` runs in CI to keep that honest.
+
 ## Testing
 
 | Layer | Approach |
@@ -356,6 +399,7 @@ Run `check` and `test` before pushing; CI runs the same commands.
 | `core` | Unit tests against a temporary store root and an in-memory database. The store's hostile-input fixtures — traversal, zip-slip, symlinks, decompression bombs — live here. |
 | `api` | `httpx.AsyncClient` against the app. Every endpoint that takes a team segment has a cross-tenant test asserting team A cannot reach team B. |
 | `gateway` | A real MCP client against a seeded Hub, asserting the tool surface. |
+| `web` | Vitest and Testing Library against a stubbed `fetch`. The XSS corpus in `web/src/__tests__/markdown.test.ts` asserts on the parsed DOM — tags, `on*` attributes, URL schemes — because escaped text legitimately still reads as a payload in the HTML string. |
 | End-to-end | `scripts/dev.py e2e`, run in CI. Asserts on the MCP tool surface, never on model output, so it needs no model and does not flake. |
 
 Tenant isolation tests are not optional and are not merged as follow-ups. A leak of another team's

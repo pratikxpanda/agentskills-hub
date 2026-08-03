@@ -80,6 +80,36 @@ def examples() -> None:
     _run([_PY, "scripts/validate_examples.py"])
 
 
+def _npm(*args: str) -> None:
+    npm = shutil.which("npm")
+    if npm is None:
+        print("npm is not on PATH; skipping. The Python checks do not need it.")
+        sys.exit(1)
+    print(f"\n{'=' * 60}")
+    print(f"  npm {' '.join(args)}  (in web/)")
+    print(f"{'=' * 60}\n")
+    result = subprocess.run([npm, *args], cwd=ROOT / "web", check=False)
+    if result.returncode != 0:
+        sys.exit(result.returncode)
+
+
+def web_install() -> None:
+    """Install the UI's dependencies from the lockfile."""
+    _npm("ci")
+
+
+def web_check() -> None:
+    """Lint, typecheck, and test the UI."""
+    _npm("run", "lint")
+    _npm("run", "test")
+    _npm("run", "build")
+
+
+def web_dev() -> None:
+    """Serve the UI, proxying /api and /mcp to a Hub on port 8000."""
+    _npm("run", "dev")
+
+
 def migrate() -> None:
     """Upgrade the database to the latest migration."""
     _run([str(Path(_PY).parent / "alembic"), "upgrade", "head"])
@@ -178,6 +208,9 @@ TASKS = {
     "imports": imports,
     "docs": docs,
     "examples": examples,
+    "web": web_check,
+    "web:install": web_install,
+    "web:dev": web_dev,
     "migrate": migrate,
     "migrate:down": migrate_down,
     "migration": migration,
