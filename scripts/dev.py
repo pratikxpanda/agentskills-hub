@@ -34,7 +34,9 @@ def _run(cmd: list[str], *, check: bool = True) -> int:
 
 
 # conftest.py sits at the root so that mypy sees exactly one module named `conftest`.
-_SOURCES = ["packages/", "scripts/", "conftest.py"]
+# `examples/` is linted but not type-checked: its imports are optional agent frameworks that the
+# Hub does not depend on, and installing them to satisfy mypy would be the tail wagging the dog.
+_SOURCES = ["packages/", "scripts/", "tests/", "examples/", "conftest.py"]
 
 
 def lint() -> None:
@@ -78,6 +80,18 @@ def docs() -> None:
 def examples() -> None:
     """Validate the example skills against the SDK's own validator."""
     _run([_PY, "scripts/validate_examples.py"])
+
+
+def seed() -> None:
+    """Populate a demo organization, teams, skills, and API keys. Idempotent."""
+    _run([_PY, "scripts/seed.py", *sys.argv[2:]])
+
+
+def e2e() -> None:
+    """End to end: seed, publish, subscribe, connect over MCP. No model involved."""
+    # Outside `test` on purpose: `testpaths` is `packages`, and this is slow enough that it
+    # should not sit in the loop a change to one package runs.
+    _run([_PY, "-m", "pytest", "tests/", "-v"])
 
 
 def _npm(*args: str) -> None:
@@ -208,6 +222,8 @@ TASKS = {
     "imports": imports,
     "docs": docs,
     "examples": examples,
+    "seed": seed,
+    "e2e": e2e,
     "web": web_check,
     "web:install": web_install,
     "web:dev": web_dev,

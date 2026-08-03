@@ -29,15 +29,19 @@ poetry run python scripts/dev.py check
 poetry run python scripts/dev.py test
 ```
 
-The steps below are not wired up yet; they land with the API:
-
 ```bash
-python scripts/dev.py seed          # demo organization, teams, skills, API keys
-python scripts/dev.py dev           # API + gateway + UI
+python scripts/dev.py seed          # demo teams, skills, subscriptions, API keys
 ```
 
-`seed` will print the team API keys and MCP endpoint URLs, and be idempotent — running it twice
-does not duplicate anything.
+`seed` prints the team API keys and MCP endpoint URLs, and is idempotent — running it twice does
+not duplicate anything. The exception is the key itself: only its hash is stored, so a second run
+reports that the existing key was kept. `--rotate` issues a new one.
+
+This one is not wired up yet; it lands with the container image:
+
+```bash
+python scripts/dev.py dev           # API + gateway + UI in one process
+```
 
 ## Repository layout
 
@@ -52,14 +56,16 @@ agentskills-hub/
 ├── deploy/                               # Dockerfile, compose, Azure Container Apps (not built yet)
 ├── examples/
 │   ├── skills/                           # seed corpus
-│   ├── seed.yaml                         # organization, teams, scopes, starting subscriptions
-│   └── agent/                            # Agent Framework and LangChain reference agents (not built yet)
+│   ├── seed.yaml                         # teams, scopes, starting subscriptions
+│   └── agent/                            # Agent Framework and LangChain reference agents
 ├── scripts/
 │   ├── check_links.py                    # relative markdown links resolve
 │   ├── check_yaml.py                     # every YAML file parses
 │   ├── validate_examples.py              # examples/skills/ pass the SDK's validator
+│   ├── seed.py                           # demo teams, skills, subscriptions, API keys
 │   ├── sync_labels.py                    # apply .github/labels.yml to the repo
 │   └── dev.py                            # task runner
+├── tests/                                # end-to-end only; unit tests live beside their package
 ├── .github/                              # workflows, issue and PR templates, labels, CODEOWNERS
 ├── alembic.ini                           # migration config; the URL comes from HUB_DATABASE_URL
 └── docs/
@@ -330,6 +336,8 @@ The Hub adds a few of its own:
 | `python scripts/dev.py imports` | The layering contracts in the table above, via import-linter |
 | `python scripts/dev.py docs` | Every relative markdown link resolves and every YAML file parses |
 | `python scripts/dev.py examples` | `examples/skills/` validate against the SDK's own `validate_skill()` |
+| `python scripts/dev.py seed` | Publish the demo corpus and print each team's key and endpoint |
+| `python scripts/dev.py e2e` | Seed, publish, subscribe, connect over MCP, assert the tool surface |
 | `python scripts/dev.py migrate` | Alembic upgrade to head |
 | `python scripts/dev.py migrate:down` | Alembic downgrade one revision |
 | `python scripts/dev.py migration "message"` | Autogenerate a migration from the models |
@@ -350,9 +358,7 @@ Not built yet:
 
 | Command | Arrives with |
 |---|---|
-| `python scripts/dev.py seed` | Demo data |
 | `python scripts/dev.py dev` | API, gateway, and UI |
-| `python scripts/dev.py e2e` | End-to-end: publish → subscribe → MCP connect |
 
 Run `check` and `test` before pushing; CI runs the same commands.
 
@@ -400,7 +406,7 @@ of `pushState` and `popstate`. `npm audit --audit-level=high` runs in CI to keep
 | `api` | `httpx.AsyncClient` against the app. Every endpoint that takes a team segment has a cross-tenant test asserting team A cannot reach team B. |
 | `gateway` | A real MCP client against a seeded Hub, asserting the tool surface. |
 | `web` | Vitest and Testing Library against a stubbed `fetch`. The XSS corpus in `web/src/__tests__/markdown.test.ts` asserts on the parsed DOM — tags, `on*` attributes, URL schemes — because escaped text legitimately still reads as a payload in the HTML string. |
-| End-to-end | `scripts/dev.py e2e`, run in CI. Asserts on the MCP tool surface, never on model output, so it needs no model and does not flake. |
+| End-to-end | `scripts/dev.py e2e`, run in CI. Lives in `tests/` rather than beside a package, because it is the one test that may know about both edges at once. It runs `scripts/seed.py` as a subprocess and authenticates with the keys that command prints, so a demo whose printed keys do not work fails here. Asserts on the MCP tool surface, never on model output, so it needs no model and does not flake. |
 
 Tenant isolation tests are not optional and are not merged as follow-ups. A leak of another team's
 private instructions is this system's worst failure

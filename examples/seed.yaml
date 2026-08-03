@@ -4,38 +4,37 @@
 # model, pinned versions. None of it appears in SKILL.md, which stays a plain SDK skill that works
 # unmodified with a filesystem provider. That separation is ADR 0001, demonstrated rather than
 # asserted.
-
-organization:
-  name: Contoso
-  slug: contoso
-
-domains:
-  - slug: payments
-    name: Payments
+#
+# Organizations and domains are not modelled in v0.1, so they are not here. Naming them in a
+# manifest the seeder cannot honour would be a fiction the demo has to keep up.
 
 teams:
   - slug: checkout-squad
     name: Checkout Squad
-    domain: payments
   - slug: platform-team
     name: Platform Team
 
 skills:
-  - source: ./skills/incident-response       # copied from the SDK's examples at seed time
+  - source: ./skills/incident-response       # vendored from the SDK's examples, byte for byte
     skill_id: incident-response
     version: 1.0.0
     scope: org
     owner: platform-team
     visibility: listed
     subscription_model: open
+    tags: [sre, on-call]
 
+  # Scope is recorded but not yet enforced: the catalog does not filter on it and there is no
+  # domain entity, so `owner` names the team that owns the skill. Domain-scoped visibility is
+  # v0.2 work; until it lands this row is metadata, not a boundary.
   - source: ./skills/pci-payment-review
     skill_id: pci-payment-review
     version: 1.0.0
     scope: domain
-    owner: payments
+    owner: checkout-squad
     visibility: listed
     subscription_model: approval-required
+    tags: [payments, compliance]
 
 subscriptions:
   - team: checkout-squad
