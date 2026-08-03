@@ -7,9 +7,10 @@ import-linter contract `no ORM session escapes core` enforces that mechanically.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Sequence
 from datetime import datetime, timedelta
 
-from sqlmodel import select
+from sqlmodel import col, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from agentskills_hub_core.enums import (
@@ -22,6 +23,7 @@ from agentskills_hub_core.enums import (
     Visibility,
 )
 from agentskills_hub_core.identifiers import (
+    normalise_tags,
     validate_skill_id,
     validate_team_slug,
     validate_version,
@@ -30,6 +32,7 @@ from agentskills_hub_core.models import (
     ApiKey,
     Environment,
     Skill,
+    SkillTag,
     SkillVersion,
     Subscription,
     Team,
@@ -172,11 +175,36 @@ class SkillRepository:
             visibility=visibility,
             subscription_model=subscription_model,
             lifecycle=lifecycle,
-            tags=tags or [],
         )
         self._session.add(skill)
         await self._session.flush()
+        await self.set_tags(skill, tags or [])
         return skill
+
+    async def set_tags(self, skill: Skill, tags: list[str]) -> list[str]:
+        """Replace a skill's tags. Returns them normalised."""
+        normalised = normalise_tags(tags)
+        existing = await self._session.exec(select(SkillTag).where(SkillTag.skill_id == skill.id))
+        for row in existing.all():
+            await self._session.delete(row)
+        for tag in normalised:
+            self._session.add(SkillTag(skill_id=skill.id, tag=tag))
+        await self._session.flush()
+        return normalised
+
+    async def tags_for(self, skill_ids: Sequence[uuid.UUID]) -> dict[uuid.UUID, list[str]]:
+        """Tags for many skills in one query, so a catalog page never fans out per row."""
+        if not skill_ids:
+            return {}
+        result = await self._session.exec(
+            select(SkillTag)
+            .where(col(SkillTag.skill_id).in_(skill_ids))
+            .order_by(col(SkillTag.skill_id), col(SkillTag.tag))
+        )
+        tags: dict[uuid.UUID, list[str]] = {skill_id: [] for skill_id in skill_ids}
+        for row in result.all():
+            tags[row.skill_id].append(row.tag)
+        return tags
 
     async def get_by_skill_id(self, skill_id: str) -> Skill | None:
         result = await self._session.exec(select(Skill).where(Skill.skill_id == skill_id))

@@ -37,6 +37,19 @@ async def test_team_a_cannot_read_team_b(api: ApiFixture) -> None:
     assert response.json()["error"]["code"] == "team_mismatch"
 
 
+async def test_the_catalog_is_shared_but_its_subscription_state_is_not(api: ApiFixture) -> None:
+    """The catalog is the one endpoint where reading another team's rows is the point.
+
+    Skills are org-scoped in v0.1, so hiding them would defeat the product. What must not cross
+    the boundary is `is_subscribed` and `subscribed_version`, which are answers about the caller.
+    tests/test_catalog.py asserts they do not; this records that the exposure is deliberate.
+    """
+    response = await api.client.get("/api/skills", headers=api.alice.headers)
+
+    assert response.status_code == 200
+    assert response.json()["items"] == []
+
+
 async def test_the_path_segment_never_selects_the_team(api: ApiFixture) -> None:
     """A forged segment must not become the answer, even when it names a real team."""
     forged = await api.client.get(f"/api/teams/{api.bob.slug}", headers=api.alice.headers)

@@ -9,7 +9,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import JSON, Column, Enum, UniqueConstraint
+from sqlalchemy import Column, Enum, UniqueConstraint
 from sqlmodel import Field, SQLModel
 
 from agentskills_hub_core.enums import (
@@ -83,8 +83,22 @@ class Skill(SQLModel, table=True):
         sa_column=_enum_column(SubscriptionModel, "subscription_model")
     )
     lifecycle: SkillLifecycle = Field(sa_column=_enum_column(SkillLifecycle, "skill_lifecycle"))
-    tags: list[str] = Field(default_factory=list, sa_column=Column(JSON, nullable=False))
     created_at: datetime = Field(default_factory=utcnow, sa_type=UtcDateTime)
+
+
+class SkillTag(SQLModel, table=True):
+    """One row per tag, rather than a JSON array on `skill`.
+
+    The catalog filters by tag with AND semantics. A JSON array can only be searched with a
+    substring match in portable SQL, which would match `ops` inside `devops`.
+    """
+
+    __tablename__ = "skill_tag"
+    __table_args__ = (UniqueConstraint("skill_id", "tag", name="uq_skill_tag"),)
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    skill_id: uuid.UUID = Field(foreign_key="skill.id", index=True)
+    tag: str = Field(index=True, max_length=64)
 
 
 class SkillVersion(SQLModel, table=True):
@@ -130,6 +144,7 @@ __all__ = [
     "ApiKey",
     "Environment",
     "Skill",
+    "SkillTag",
     "SkillVersion",
     "Subscription",
     "Team",

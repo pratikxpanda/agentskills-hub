@@ -19,8 +19,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import IO, Any, Protocol
 
+from agentskills_core import ResourceListingNotSupportedError, validate_skill
 from agentskills_core import Skill as SdkSkill
-from agentskills_core import validate_skill
 from agentskills_fs import LocalFileSystemSkillProvider
 
 from agentskills_hub_core.archives import ArchiveLimits, content_digest, extract, spool
@@ -38,12 +38,28 @@ class PublishedVersion:
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
+@dataclass(frozen=True)
+class StoredVersion:
+    """A version's content, as the catalog serves it.
+
+    `body` is markdown exactly as published. The Hub never renders it -- see item 5 and ADR 0002.
+    """
+
+    body: str
+    metadata: dict[str, Any] = field(default_factory=dict)
+    resources: dict[str, list[str]] = field(default_factory=dict)
+
+
 class SkillStoreError(Exception):
     """Base class for store failures. Messages name a skill and version, never a server path."""
 
 
 class VersionAlreadyPublishedError(SkillStoreError):
     """The target version already exists. Republishing is an error, never an overwrite."""
+
+
+class VersionNotStoredError(SkillStoreError):
+    """The database knows about a version whose content is missing from the store."""
 
 
 class InvalidSkillArchiveError(SkillStoreError):
@@ -69,6 +85,9 @@ class SkillStore(Protocol):
         self, skill_id: str, version: str, archive: Path | IO[bytes]
     ) -> PublishedVersion:
         """Store a version's content and describe what was stored."""
+
+    async def read(self, skill_id: str, version: str) -> StoredVersion:
+        """Return a stored version's markdown body, frontmatter, and resource inventory."""
 
 
 class LocalFileSystemSkillStore:
@@ -138,6 +157,25 @@ class LocalFileSystemSkillStore:
         finally:
             await asyncio.to_thread(shutil.rmtree, workspace, True)
 
+    async def read(self, skill_id: str, version: str) -> StoredVersion:
+        root = self.version_root(skill_id, version)
+        if not self.exists(skill_id, version):
+            raise VersionNotStoredError(f"{skill_id} {version} has no content in the store")
+
+        skill = SdkSkill(skill_id=skill_id, provider=LocalFileSystemSkillProvider(root))
+        try:
+            resources = await skill.list_resources()
+        except ResourceListingNotSupportedError:
+            # A provider that cannot enumerate is not an error the catalog should surface; the
+            # inventory is additional information, not the reason the page exists.
+            resources = {}
+
+        return StoredVersion(
+            body=await skill.get_body(),
+            metadata=await skill.get_metadata(),
+            resources={kind: names for kind, names in resources.items() if names},
+        )
+
     def _stage(self, skill_id: str, archive: Path | IO[bytes], workspace: Path) -> Path:
         if not isinstance(archive, Path):
             upload = workspace / "upload"
@@ -177,5 +215,7 @@ __all__ = [
     "PublishedVersion",
     "SkillStore",
     "SkillStoreError",
+    "StoredVersion",
     "VersionAlreadyPublishedError",
+    "VersionNotStoredError",
 ]

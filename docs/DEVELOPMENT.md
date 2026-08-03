@@ -183,7 +183,48 @@ Limits are configurable and each has its own test:
 | Member count | `HUB_MAX_MEMBERS` | 2000 |
 
 Tags are recorded when a skill is first created and ignored on later versions. Changing another
-team's tags is a v0.2 question with an authorisation answer attached.
+team's tags is a v0.2 question with an authorisation answer attached. They are validated and
+normalised in step 2, before anything is written, so a bad tag cannot leave a stored version
+behind that no row points at.
+
+## Catalog
+
+Four read-only endpoints, all authenticated:
+
+| Endpoint | Returns |
+|---|---|
+| `GET /api/skills` | A page of entries plus `next_cursor`. |
+| `GET /api/skills/{skill_id}` | One entry, plus the latest version's body and resource inventory. |
+| `GET /api/skills/{skill_id}/versions` | Published versions, newest first. |
+| `GET /api/skills/{skill_id}/versions/{version}` | One version's metadata and body. |
+
+Three rules that are easy to break later:
+
+- **Bodies are markdown and never HTML.** The content model is entirely user-submitted markdown,
+  so a server-side renderer would put stored XSS one templating mistake away. Sanitisation belongs
+  at render time, in the client that knows its own context.
+- **The list response is a contract.** It carries every field the catalog page renders, so drawing
+  a page is one request. A thin list response is the same API with the join moved into N clients.
+- **`is_subscribed` and `subscribed_version` are answers about the caller**, resolved from the
+  credential's environment. Skills are org-scoped and deliberately readable across teams; these
+  two fields are the part that must not be.
+
+Filtering and paging:
+
+- `?q=` matches skill id, description, and tags. The pattern is escaped, so `%` matches a literal
+  per cent rather than everything.
+- `?tags=` is repeatable and combines with AND. Tags live in `skill_tag`, one row each, rather
+  than in a JSON array on `skill`: portable SQL can only search a JSON array by substring, which
+  matches `ops` inside `devops`.
+- Pagination is cursor-based from the start. The cursor is an opaque encoding of the last
+  `(skill_id, id)` seen, so a row inserted behind it neither repeats nor skips a result. Offset
+  pagination would be a rewrite exactly when the catalog became large enough to need paging.
+
+A list read is four queries regardless of page size — page, tags, subscriber counts, and the
+caller's own subscriptions — rather than one plus N.
+
+Latest version is chosen by semver precedence, not string order: `1.10.0` follows `1.9.0`, and no
+portable SQL expression says so, which is why `version_sort_key` sorts in Python.
 
 ## Commands
 

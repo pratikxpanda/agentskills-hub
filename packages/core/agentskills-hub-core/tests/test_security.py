@@ -36,9 +36,12 @@ def test_two_mints_never_agree() -> None:
 def test_verification_accepts_the_right_secret_and_rejects_the_rest() -> None:
     minted = mint_api_key()
     _, _, secret = minted.token.split("_")
+    # Flipped to a character the last one is not: appending a fixed digit reproduces the original
+    # secret one time in sixteen, because the secret is hex.
+    wrong = secret[:-1] + ("1" if secret[-1] == "0" else "0")
 
     assert verify_secret(minted.key_hash, secret) is True
-    assert verify_secret(minted.key_hash, secret[:-1] + "0") is False
+    assert verify_secret(minted.key_hash, wrong) is False
     assert verify_secret(minted.key_hash, "") is False
 
 

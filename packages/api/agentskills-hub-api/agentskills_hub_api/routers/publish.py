@@ -23,6 +23,7 @@ from agentskills_hub_core import (
     UnsafeArchiveError,
     UnsupportedArchiveError,
     VersionAlreadyPublishedError,
+    normalise_tags,
     validate_skill_id,
     validate_version,
 )
@@ -55,7 +56,12 @@ def _parse_tags(raw: str | None) -> list[str]:
         raise ApiError(
             status.HTTP_400_BAD_REQUEST, "invalid_tags", "tags must be a JSON array of strings."
         )
-    return parsed
+    try:
+        # Normalised here rather than at the point of storage, which happens after the content is
+        # already committed. A bad tag must not leave an orphaned version behind.
+        return normalise_tags(parsed)
+    except InvalidIdentifierError as exc:
+        raise ApiError(status.HTTP_400_BAD_REQUEST, "invalid_tags", str(exc)) from exc
 
 
 @router.post(

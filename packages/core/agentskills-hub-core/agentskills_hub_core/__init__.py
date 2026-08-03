@@ -7,6 +7,15 @@ from agentskills_hub_core.archives import (
     content_digest,
 )
 from agentskills_hub_core.auth import TeamPrincipal, authenticate
+from agentskills_hub_core.catalog import (
+    DEFAULT_PAGE_SIZE,
+    MAX_PAGE_SIZE,
+    CatalogEntry,
+    CatalogPage,
+    CatalogRepository,
+    InvalidCursorError,
+    VersionSummary,
+)
 from agentskills_hub_core.database import (
     DEFAULT_DATABASE_URL,
     DatabaseEngine,
@@ -27,7 +36,9 @@ from agentskills_hub_core.enums import (
 )
 from agentskills_hub_core.identifiers import (
     InvalidIdentifierError,
+    normalise_tags,
     validate_skill_id,
+    validate_tag,
     validate_team_slug,
     validate_version,
 )
@@ -35,6 +46,7 @@ from agentskills_hub_core.models import (
     ApiKey,
     Environment,
     Skill,
+    SkillTag,
     SkillVersion,
     Subscription,
     Team,
@@ -60,7 +72,9 @@ from agentskills_hub_core.store import (
     PublishedVersion,
     SkillStore,
     SkillStoreError,
+    StoredVersion,
     VersionAlreadyPublishedError,
+    VersionNotStoredError,
 )
 
 __version__ = "0.1.0"
@@ -68,14 +82,20 @@ __version__ = "0.1.0"
 __all__ = [
     "DEFAULT_DATABASE_URL",
     "DEFAULT_ENVIRONMENT_NAME",
+    "DEFAULT_PAGE_SIZE",
+    "MAX_PAGE_SIZE",
     "SKILL_FILE",
     "TOKEN_SCHEME",
     "ApiKey",
     "ApiKeyRepository",
     "ArchiveLimits",
+    "CatalogEntry",
+    "CatalogPage",
+    "CatalogRepository",
     "DatabaseEngine",
     "DatabaseSession",
     "Environment",
+    "InvalidCursorError",
     "InvalidIdentifierError",
     "InvalidSkillArchiveError",
     "LocalFileSystemSkillStore",
@@ -88,7 +108,9 @@ __all__ = [
     "SkillScope",
     "SkillStore",
     "SkillStoreError",
+    "SkillTag",
     "SkillVersion",
+    "StoredVersion",
     "Subscription",
     "SubscriptionModel",
     "SubscriptionOrigin",
@@ -100,7 +122,9 @@ __all__ = [
     "UnsafeArchiveError",
     "UnsupportedArchiveError",
     "VersionAlreadyPublishedError",
+    "VersionNotStoredError",
     "VersionStatus",
+    "VersionSummary",
     "Visibility",
     "__version__",
     "authenticate",
@@ -108,9 +132,11 @@ __all__ = [
     "create_engine",
     "create_session_factory",
     "mint_api_key",
+    "normalise_tags",
     "session_scope",
     "split_token",
     "validate_skill_id",
+    "validate_tag",
     "validate_team_slug",
     "validate_version",
     "verify_secret",

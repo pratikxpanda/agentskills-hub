@@ -18,6 +18,7 @@ from agentskills_hub_core.store import (
     LocalFileSystemSkillStore,
     SkillStore,
     VersionAlreadyPublishedError,
+    VersionNotStoredError,
 )
 
 SKILL_ID = "incident-response"
@@ -72,6 +73,25 @@ async def test_a_published_version_reads_with_the_sdk_provider(
     assert await validate_skill(skill) == []
     assert "on-call engineer" in await skill.get_body()
     assert (await skill.get_metadata())["name"] == SKILL_ID
+
+
+async def test_read_returns_the_body_frontmatter_and_inventory(
+    store: LocalFileSystemSkillStore, tmp_path: Path
+) -> None:
+    await store.publish(SKILL_ID, "1.0.0", make_archive(tmp_path / "skill.zip"))
+
+    stored = await store.read(SKILL_ID, "1.0.0")
+
+    assert stored.body == "Steps for the on-call engineer."
+    assert stored.metadata["name"] == SKILL_ID
+    assert stored.resources == {"references": ["runbook.md"]}
+
+
+async def test_reading_a_version_that_was_never_stored_is_an_error(
+    store: LocalFileSystemSkillStore,
+) -> None:
+    with pytest.raises(VersionNotStoredError):
+        await store.read(SKILL_ID, "1.0.0")
 
 
 async def test_an_archive_nesting_the_skill_directory_is_accepted(
