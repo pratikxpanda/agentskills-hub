@@ -17,7 +17,9 @@ from agentskills_hub_core.store import (
     InvalidSkillArchiveError,
     LocalFileSystemSkillStore,
     SkillStore,
+    SkillStoreError,
     VersionAlreadyPublishedError,
+    VersionNotStoredError,
 )
 
 SKILL_ID = "incident-response"
@@ -72,6 +74,25 @@ async def test_a_published_version_reads_with_the_sdk_provider(
     assert await validate_skill(skill) == []
     assert "on-call engineer" in await skill.get_body()
     assert (await skill.get_metadata())["name"] == SKILL_ID
+
+
+async def test_read_returns_the_body_frontmatter_and_inventory(
+    store: LocalFileSystemSkillStore, tmp_path: Path
+) -> None:
+    await store.publish(SKILL_ID, "1.0.0", make_archive(tmp_path / "skill.zip"))
+
+    stored = await store.read(SKILL_ID, "1.0.0")
+
+    assert stored.body == "Steps for the on-call engineer."
+    assert stored.metadata["name"] == SKILL_ID
+    assert stored.resources == {"references": ["runbook.md"]}
+
+
+async def test_reading_a_version_that_was_never_stored_is_an_error(
+    store: LocalFileSystemSkillStore,
+) -> None:
+    with pytest.raises(VersionNotStoredError):
+        await store.read(SKILL_ID, "1.0.0")
 
 
 async def test_an_archive_nesting_the_skill_directory_is_accepted(
@@ -204,6 +225,55 @@ def test_identifiers_are_validated_before_a_path_is_built(
         store.version_root("../../etc", "1.0.0")
     with pytest.raises(InvalidIdentifierError):
         store.version_root(SKILL_ID, "../../etc")
+
+
+@pytest.mark.parametrize(
+    ("skill_id", "version"),
+    [
+        ("../../etc", "1.0.0"),
+        ("..", "1.0.0"),
+        ("/etc/passwd", "1.0.0"),
+        ("C:\\Windows", "1.0.0"),
+        ("incident-response/../../..", "1.0.0"),
+        (SKILL_ID, "../../.."),
+        (SKILL_ID, "1.0.0/../../.."),
+        (SKILL_ID, "..\\..\\.."),
+    ],
+)
+def test_no_identifier_yields_a_path_outside_the_store(
+    store: LocalFileSystemSkillStore, skill_id: str, version: str
+) -> None:
+    """Both endpoints in the catalog take these straight from a URL path.
+
+    Two independent defences have to hold: the patterns reject the value, and the containment
+    check would reject the path even if a pattern were loosened. This asserts the outcome rather
+    than which of the two fired, so it keeps its meaning if either changes.
+    """
+    with pytest.raises((InvalidIdentifierError, SkillStoreError)):
+        store.version_root(skill_id, version)
+
+
+def test_a_legitimate_path_stays_under_the_store(store: LocalFileSystemSkillStore) -> None:
+    root = store.version_root(SKILL_ID, "1.0.0")
+
+    assert root.is_relative_to(store.root / "skills")
+    assert store.skill_dir(SKILL_ID, "1.0.0") == root / SKILL_ID
+
+
+def test_the_containment_check_holds_without_the_patterns(
+    store: LocalFileSystemSkillStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Defence in depth is only depth if the second layer works alone.
+
+    With validation disabled the patterns cannot be what rejects these, so a pass here means the
+    containment check is load-bearing rather than decorative.
+    """
+    monkeypatch.setattr(store_module, "validate_skill_id", lambda value: value)
+    monkeypatch.setattr(store_module, "validate_version", lambda value: value)
+
+    for skill_id, version in ((r"../../etc", "1.0.0"), ("..", "1.0.0"), (SKILL_ID, "../../..")):
+        with pytest.raises(SkillStoreError):
+            store.version_root(skill_id, version)
 
 
 async def test_errors_never_disclose_server_paths(

@@ -13,14 +13,15 @@ see ADR 0002.
 from __future__ import annotations
 
 import asyncio
+import os
 import shutil
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import IO, Any, Protocol
 
+from agentskills_core import ResourceListingNotSupportedError, validate_skill
 from agentskills_core import Skill as SdkSkill
-from agentskills_core import validate_skill
 from agentskills_fs import LocalFileSystemSkillProvider
 
 from agentskills_hub_core.archives import ArchiveLimits, content_digest, extract, spool
@@ -38,12 +39,28 @@ class PublishedVersion:
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
+@dataclass(frozen=True)
+class StoredVersion:
+    """A version's content, as the catalog serves it.
+
+    `body` is markdown exactly as published. The Hub never renders it -- see item 5 and ADR 0002.
+    """
+
+    body: str
+    metadata: dict[str, Any] = field(default_factory=dict)
+    resources: dict[str, list[str]] = field(default_factory=dict)
+
+
 class SkillStoreError(Exception):
     """Base class for store failures. Messages name a skill and version, never a server path."""
 
 
 class VersionAlreadyPublishedError(SkillStoreError):
     """The target version already exists. Republishing is an error, never an overwrite."""
+
+
+class VersionNotStoredError(SkillStoreError):
+    """The database knows about a version whose content is missing from the store."""
 
 
 class InvalidSkillArchiveError(SkillStoreError):
@@ -70,6 +87,9 @@ class SkillStore(Protocol):
     ) -> PublishedVersion:
         """Store a version's content and describe what was stored."""
 
+    async def read(self, skill_id: str, version: str) -> StoredVersion:
+        """Return a stored version's markdown body, frontmatter, and resource inventory."""
+
 
 class LocalFileSystemSkillStore:
     def __init__(self, root: Path | str, limits: ArchiveLimits | None = None) -> None:
@@ -77,7 +97,9 @@ class LocalFileSystemSkillStore:
         # root. Resolution happens here, once.
         self._root = Path(root).resolve()
         self._limits = limits or ArchiveLimits()
-        self._skills = self._root / "skills"
+        # Resolved here so that a symlinked store directory is followed once, rather than on every
+        # path built under it.
+        self._skills = (self._root / "skills").resolve()
         self._staging = self._root / "staging"
 
     @property
@@ -91,15 +113,26 @@ class LocalFileSystemSkillStore:
     def version_root(self, skill_id: str, version: str) -> Path:
         validate_skill_id(skill_id)
         validate_version(version)
-        candidate = (self._skills / skill_id / version).resolve()
-        # Belt and braces: the identifier patterns already exclude separators, but the assertion
-        # costs nothing and this is the path that trusts them.
-        if self._skills not in candidate.parents:
+
+        # Both identifiers reach here straight from a URL path, so containment is established the
+        # way a scanner can follow as well as a reader: normalise the join, then require the store
+        # root as a literal prefix. The patterns above already exclude separators and `..`; this is
+        # the second of the two independent reasons a traversal cannot get through.
+        root = str(self._skills)
+        candidate = os.path.normpath(os.path.join(root, skill_id, version))
+        if not candidate.startswith(root + os.sep):
             raise SkillStoreError(f"resolved path for {skill_id} {version} escapes the store")
-        return candidate
+        return Path(candidate)
+
+    def skill_dir(self, skill_id: str, version: str) -> Path:
+        """The SDK skill directory inside a version root."""
+        root = self.version_root(skill_id, version)
+        # Taken from the validated path rather than from the argument a second time: the inner
+        # segment is by construction the same one `version_root` already proved safe.
+        return root / root.parent.name
 
     def exists(self, skill_id: str, version: str) -> bool:
-        return (self.version_root(skill_id, version) / skill_id / SKILL_FILE).is_file()
+        return (self.skill_dir(skill_id, version) / SKILL_FILE).is_file()
 
     async def publish(
         self, skill_id: str, version: str, archive: Path | IO[bytes]
@@ -137,6 +170,25 @@ class LocalFileSystemSkillStore:
             )
         finally:
             await asyncio.to_thread(shutil.rmtree, workspace, True)
+
+    async def read(self, skill_id: str, version: str) -> StoredVersion:
+        root = self.version_root(skill_id, version)
+        if not self.exists(skill_id, version):
+            raise VersionNotStoredError(f"{skill_id} {version} has no content in the store")
+
+        skill = SdkSkill(skill_id=skill_id, provider=LocalFileSystemSkillProvider(root))
+        try:
+            resources = await skill.list_resources()
+        except ResourceListingNotSupportedError:
+            # A provider that cannot enumerate is not an error the catalog should surface; the
+            # inventory is additional information, not the reason the page exists.
+            resources = {}
+
+        return StoredVersion(
+            body=await skill.get_body(),
+            metadata=await skill.get_metadata(),
+            resources={kind: names for kind, names in resources.items() if names},
+        )
 
     def _stage(self, skill_id: str, archive: Path | IO[bytes], workspace: Path) -> Path:
         if not isinstance(archive, Path):
@@ -177,5 +229,7 @@ __all__ = [
     "PublishedVersion",
     "SkillStore",
     "SkillStoreError",
+    "StoredVersion",
     "VersionAlreadyPublishedError",
+    "VersionNotStoredError",
 ]

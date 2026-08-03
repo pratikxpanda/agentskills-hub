@@ -128,6 +128,7 @@ These are decisions, not omissions. Each has a milestone.
 |---|---|
 | **No roles.** Authentication proves which team a request belongs to; it does not grant or withhold permissions. Any authenticated team may publish. | v0.4 (Entra ID and RBAC) |
 | Failed-authentication rate limiting is per-process, so it only holds for a single instance. | v0.4 |
+| Catalog search is a `LIKE` scan over ids, descriptions, and tags. Correct, and linear in catalog size. | v0.3 (search) |
 | One environment per team, created automatically and named `default`. | v0.3 |
 | SQLite only. | v1.0 (PostgreSQL) |
 

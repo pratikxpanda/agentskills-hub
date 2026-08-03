@@ -180,7 +180,30 @@ async def test_v01_defaults_match_the_milestone(session: AsyncSession) -> None:
     assert skill.visibility is Visibility.LISTED
     assert skill.subscription_model is SubscriptionModel.OPEN
     assert skill.lifecycle is SkillLifecycle.ACTIVE
-    assert skill.tags == []
+    assert await skills.tags_for([skill.id]) == {skill.id: []}
+
+
+async def test_tags_are_stored_as_rows_normalised_and_de_duplicated(
+    session: AsyncSession,
+) -> None:
+    teams = TeamRepository(session)
+    team, _ = await teams.create("platform-team", "Platform")
+    skills = SkillRepository(session)
+    skill = await skills.create(
+        "pci-payment-review", team.id, tags=["Payments", " compliance ", "payments"]
+    )
+    await session.commit()
+
+    assert await skills.tags_for([skill.id]) == {skill.id: ["compliance", "payments"]}
+
+
+async def test_a_tag_that_would_not_survive_a_url_is_rejected(session: AsyncSession) -> None:
+    teams = TeamRepository(session)
+    team, _ = await teams.create("platform-team", "Platform")
+    skills = SkillRepository(session)
+
+    with pytest.raises(InvalidIdentifierError):
+        await skills.create("pci-payment-review", team.id, tags=["not a tag"])
 
 
 async def test_skill_id_is_validated_before_the_database(session: AsyncSession) -> None:

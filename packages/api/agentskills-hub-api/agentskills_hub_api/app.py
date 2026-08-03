@@ -10,7 +10,7 @@ from fastapi import FastAPI
 from agentskills_hub_api import __version__
 from agentskills_hub_api.errors import ErrorResponse, register_error_handlers
 from agentskills_hub_api.ratelimit import FixedWindowLimiter
-from agentskills_hub_api.routers import health, publish, teams
+from agentskills_hub_api.routers import catalog, health, publish, teams
 from agentskills_hub_api.settings import Settings
 from agentskills_hub_core import (
     ArchiveLimits,
@@ -72,5 +72,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     register_error_handlers(app)
     app.include_router(health.router)
     app.include_router(publish.router)
+    app.include_router(catalog.router)
     app.include_router(teams.router)
     return app
