@@ -14,6 +14,7 @@ from agentskills_hub_core.catalog import (
     CatalogPage,
     CatalogRepository,
     InvalidCursorError,
+    SubscriptionView,
     VersionSummary,
 )
 from agentskills_hub_core.database import (
@@ -116,6 +117,7 @@ __all__ = [
     "SubscriptionOrigin",
     "SubscriptionRepository",
     "SubscriptionStatus",
+    "SubscriptionView",
     "Team",
     "TeamPrincipal",
     "TeamRepository",

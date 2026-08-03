@@ -11,6 +11,8 @@ deployment will ever have.
 from __future__ import annotations
 
 import asyncio
+import io
+import tarfile
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import AsyncExitStack
 from dataclasses import dataclass
@@ -78,6 +80,25 @@ def skill_markdown(
     body: str = "## Triage\n\nStart with the alert.\n",
 ) -> str:
     return f"---\nname: {name}\ndescription: {description}\n---\n\n{body}"
+
+
+def skill_archive(
+    skill_id: str, description: str | None = None, extra: dict[str, bytes] | None = None
+) -> bytes:
+    """The smallest archive the publish endpoint accepts, for tests about something else."""
+    markdown = (
+        skill_markdown(skill_id, description=description)
+        if description
+        else skill_markdown(skill_id)
+    )
+    files = {f"{skill_id}/SKILL.md": markdown.encode(), **(extra or {})}
+    buffer = io.BytesIO()
+    with tarfile.open(fileobj=buffer, mode="w:gz") as archive:
+        for name, payload in files.items():
+            info = tarfile.TarInfo(name)
+            info.size = len(payload)
+            archive.addfile(info, io.BytesIO(payload))
+    return buffer.getvalue()
 
 
 @dataclass(frozen=True)

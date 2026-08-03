@@ -27,6 +27,7 @@ from agentskills_hub_core.enums import (
     SkillLifecycle,
     SkillScope,
     SubscriptionModel,
+    SubscriptionOrigin,
     SubscriptionStatus,
     VersionStatus,
     Visibility,
@@ -78,6 +79,28 @@ class CatalogEntry:
 class CatalogPage:
     entries: list[CatalogEntry]
     next_cursor: str | None
+
+
+@dataclass(frozen=True)
+class SubscriptionView:
+    """One subscription, with the facts needed to decide whether to upgrade.
+
+    `update_available` is the compensating feature for refusing `latest` in ADR 0003: pinning is
+    only reasonable if the pin's staleness is visible without going looking for it.
+    """
+
+    skill_id: str
+    owner: str
+    description: str
+    version: str
+    latest_version: str | None
+    update_available: bool
+    lifecycle: SkillLifecycle
+    origin: SubscriptionOrigin
+    subscribed_at: datetime
+    subscribed_by: str | None
+    updated_at: datetime | None
+    updated_by: str | None
 
 
 def encode_cursor(skill_id: str, row_id: uuid.UUID) -> str:
@@ -207,6 +230,56 @@ class CatalogRepository:
         entries = await self._enrich([(row[0], row[1])], environment_id)
         return entries[0] if entries else None
 
+    async def list_subscriptions(
+        self, environment_id: uuid.UUID, *, skill_id: str | None = None
+    ) -> list[SubscriptionView]:
+        """Active subscriptions for one environment, newest-version information included."""
+        statement = (
+            select(Subscription, Skill, Team.slug)
+            .join(Skill, col(Skill.id) == col(Subscription.skill_id))
+            .join(Team, col(Team.id) == col(Skill.owner_team_id))
+            .where(
+                col(Subscription.environment_id) == environment_id,
+                col(Subscription.status) == SubscriptionStatus.ACTIVE,
+            )
+            .order_by(col(Skill.skill_id))
+        )
+        if skill_id is not None:
+            statement = statement.where(col(Skill.skill_id) == skill_id)
+        rows = list((await self._session.exec(statement)).all())
+        if not rows:
+            return []
+
+        latest = await self._latest_versions([skill.id for _, skill, _ in rows])
+        views = []
+        for subscription, skill, owner in rows:
+            newest = latest.get(skill.id)
+            views.append(
+                SubscriptionView(
+                    skill_id=skill.skill_id,
+                    owner=owner,
+                    description=newest.description if newest else "",
+                    version=subscription.version,
+                    latest_version=newest.version if newest else None,
+                    update_available=newest is not None
+                    and version_sort_key(newest.version) > version_sort_key(subscription.version),
+                    lifecycle=skill.lifecycle,
+                    origin=subscription.origin,
+                    subscribed_at=subscription.created_at,
+                    subscribed_by=subscription.created_by,
+                    updated_at=subscription.updated_at,
+                    updated_by=subscription.updated_by,
+                )
+            )
+        return views
+
+    async def get_subscription(
+        self, environment_id: uuid.UUID, skill_id: str
+    ) -> SubscriptionView | None:
+        """One subscription, assembled the same way the list is, so the two cannot disagree."""
+        views = await self.list_subscriptions(environment_id, skill_id=skill_id)
+        return views[0] if views else None
+
     async def list_versions(self, skill: Skill) -> list[VersionSummary]:
         """Published versions, newest first by semver precedence."""
         result = await self._session.exec(
@@ -334,6 +407,7 @@ __all__ = [
     "CatalogPage",
     "CatalogRepository",
     "InvalidCursorError",
+    "SubscriptionView",
     "VersionSummary",
     "decode_cursor",
     "encode_cursor",
