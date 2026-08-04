@@ -37,10 +37,16 @@ python scripts/dev.py seed          # demo teams, skills, subscriptions, API key
 not duplicate anything. The exception is the key itself: only its hash is stored, so a second run
 reports that the existing key was kept. `--rotate` issues a new one.
 
-This one is not wired up yet; it lands with the container image:
+The whole Hub in one process, which is also what the container runs:
 
 ```bash
-python scripts/dev.py dev           # API + gateway + UI in one process
+python scripts/dev.py dev           # API + gateway + UI on http://127.0.0.1:8000
+```
+
+Or in a container, seeded, with nothing installed but Docker:
+
+```bash
+docker compose -f deploy/docker-compose.yml up --build
 ```
 
 ## Repository layout
@@ -51,9 +57,10 @@ agentskills-hub/
 │   ├── core/agentskills-hub-core/        # domain model, skill store, repositories
 │   ├── api/agentskills-hub-api/          # FastAPI: catalog, publish, subscriptions, auth
 │   ├── gateway/agentskills-hub-gateway/  # per-team MCP endpoint
+│   ├── server/agentskills-hub-server/    # composition root: API + gateway + UI in one app
 │   └── cli/agentskills-hub-cli/          # v0.2
 ├── web/                                  # React SPA: catalog, skill, subscriptions, publish
-├── deploy/                               # Dockerfile, compose, Azure Container Apps (not built yet)
+├── deploy/                               # Dockerfile, compose, Azure Container Apps template
 ├── examples/
 │   ├── skills/                           # seed corpus
 │   ├── seed.yaml                         # teams, scopes, starting subscriptions
@@ -116,6 +123,7 @@ a contract as the code it constrains appears.
 | `agentskills-hub-core` imports no web framework | It is the layer that has to survive the API being replaced. |
 | `agentskills-hub-api` never touches the filesystem directly | All content access goes through the `SkillStore` protocol, so a blob-backed store is a configuration change. |
 | Nothing outside `core` imports `sqlalchemy`, `sqlmodel`, or `alembic` | Persistence lives behind repositories; this is what makes the PostgreSQL move in v1.0 tractable. |
+| Nothing imports `agentskills-hub-server` | It is the only package that knows both edges exist. If anything else could import it, "run the API and the gateway separately" would quietly stop being true. |
 | No package implements `SkillProvider`, parses frontmatter, or defines an MCP tool | [ADR 0001](adr/0001-hub-is-a-control-plane.md). If you need one, file an SDK issue. |
 
 Because layers above `core` legitimately reach persistence and the filesystem *through* `core`,
@@ -309,8 +317,23 @@ Four things worth knowing before changing this:
 
 The gateway reads `HUB_DATABASE_URL` and `HUB_STORE_ROOT` too, from its own settings type rather
 than the API's — an import contract forbids the two edges from depending on each other, which is
-what makes running them in one process a deployment choice rather than a coupling. Nothing in this
-repository composes both yet; that arrives with the container image in v0.1 item 11.
+what makes running them in one process a deployment choice rather than a coupling.
+
+`agentskills_hub_server` is where that choice is made. It is the only package allowed to know that
+both edges exist, an eighth import contract forbids anything from importing it, and it is what
+`python scripts/dev.py dev` and the container both run:
+
+```python
+from agentskills_hub_server import create_server_app
+
+app = create_server_app()
+```
+
+It mounts the gateway under `/mcp`, restoring the prefix Starlette strips, and serves the built UI
+from `HUB_WEB_ROOT` at `/` with a fallback to `index.html` so that a reload on a client-side route
+works. Paths under `/api` and `/mcp` are excluded from that fallback: without the exclusion a
+mistyped API path would return the SPA with a `200`, and the client would report a parse error
+instead of the `404` it was actually given.
 
 ## Commands
 
@@ -337,6 +360,7 @@ The Hub adds a few of its own:
 | `python scripts/dev.py docs` | Every relative markdown link resolves and every YAML file parses |
 | `python scripts/dev.py examples` | `examples/skills/` validate against the SDK's own `validate_skill()` |
 | `python scripts/dev.py seed` | Publish the demo corpus and print each team's key and endpoint |
+| `python scripts/dev.py dev` | Serve the API, the gateway, and the built UI on port 8000 |
 | `python scripts/dev.py e2e` | Seed, publish, subscribe, connect over MCP, assert the tool surface |
 | `python scripts/dev.py migrate` | Alembic upgrade to head |
 | `python scripts/dev.py migrate:down` | Alembic downgrade one revision |
@@ -354,13 +378,27 @@ unpinned to run it. If a published SDK release stops accepting the example skill
 finding about the Hub's central promise rather than a build to be repaired with a constraint, and
 a weekly scheduled run surfaces it even when nobody is committing.
 
-Not built yet:
-
-| Command | Arrives with |
-|---|---|
-| `python scripts/dev.py dev` | API, gateway, and UI |
+Not built yet: nothing. Every task above runs today.
 
 Run `check` and `test` before pushing; CI runs the same commands.
+
+## The container
+
+[deploy/README.md](../deploy/README.md) is the operational page: configuration, persistence, the
+hardening the image applies, and why `HUB_ALLOWED_HOSTS` is not optional.
+
+What matters when changing it:
+
+- **Base images are pinned by digest**, not by tag. Updating one means resolving a new digest, and
+  Dependabot is configured to do it rather than a person remembering.
+- **The runtime installs wheels, not a checkout.** Third-party versions come from `poetry.lock` via
+  `poetry export`; the workspace packages are built and installed with `--no-deps`. Nothing in the
+  image is an editable install pointing at a source tree that is not there.
+- **Migrations run from `agentskills_hub_core.schema`**, which finds the scripts inside the
+  installed package rather than through the repository's `alembic.ini`. The test suite still uses
+  `alembic.ini`, on purpose: "the file a developer edits still works" is a separate claim.
+- **CI starts the image, not just builds it.** The entrypoint, the migrations, the seeder, the
+  non-root user, and the read-only filesystem only disagree with each other at runtime.
 
 ## Web UI
 
@@ -396,7 +434,10 @@ is the floor. The directive list is in `web/src/csp.ts` so that a test can asser
 
 **There is no router dependency.** `react-router-dom` carried a live high-severity advisory for a
 React Server Components feature this SPA does not use, so `web/src/routes.ts` is about fifty lines
-of `pushState` and `popstate`. `npm audit --audit-level=high` runs in CI to keep that honest.
+of `pushState` and `popstate`. `npm audit` runs in CI to keep that honest, in two steps:
+`--omit=dev` blocks, because it covers what a user actually loads, and the full audit reports
+without blocking. The distinction exists because an advisory with no published patch is a real
+state — a DoS in a glob matcher reached through eslint stops no merges and ships to nobody.
 
 ## Testing
 

@@ -94,6 +94,24 @@ def e2e() -> None:
     _run([_PY, "-m", "pytest", "tests/", "-v"])
 
 
+def dev() -> None:
+    """Serve the API, the MCP gateway, and the built UI on port 8000, reloading on change."""
+    # The same composition root the container runs, so "works locally" and "works in the image"
+    # cannot mean two different applications.
+    _run(
+        [
+            str(Path(_PY).parent / "uvicorn"),
+            "agentskills_hub_server.asgi:app",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            "8000",
+            "--reload",
+            *sys.argv[2:],
+        ]
+    )
+
+
 def _npm(*args: str) -> None:
     npm = shutil.which("npm")
     if npm is None:
@@ -223,6 +241,7 @@ TASKS = {
     "docs": docs,
     "examples": examples,
     "seed": seed,
+    "dev": dev,
     "e2e": e2e,
     "web": web_check,
     "web:install": web_install,

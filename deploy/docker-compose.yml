@@ -1,0 +1,50 @@
+# A seeded, working Hub: `docker compose up`.
+#
+# Nothing here is a secret. The API keys are minted on first start and printed to this file's own
+# log output; they are never baked into the image and never written to a committed file.
+
+services:
+  hub:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    image: agentskills-hub:local
+    ports:
+      - "8000:8000"
+    environment:
+      HUB_DATABASE_URL: sqlite+aiosqlite:////data/hub.db
+      HUB_STORE_ROOT: /data/store
+      HUB_WEB_ROOT: /app/web
+      # Seed on first start so that the Hub has something to show. Set to `off` once you have
+      # your keys, or to `rotate` to mint new ones.
+      HUB_SEED: "on"
+      HUB_PUBLIC_URL: http://127.0.0.1:8000
+      # FastMCP refuses any Host it was not told about -- that is DNS-rebinding protection, not a
+      # misconfiguration. Add your own hostname here when you put the Hub behind a name.
+      HUB_ALLOWED_HOSTS: "127.0.0.1:8000,localhost:8000,127.0.0.1,localhost,hub:8000,hub"
+    volumes:
+      # One volume, because the database and the content store must be restored together: a store
+      # without its rows is unreachable, and rows without their store are 404s.
+      - hub-data:/data
+    read_only: true
+    tmpfs:
+      - /tmp
+    user: "10001:10001"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    restart: unless-stopped
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=2).status == 200 else 1)"
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 20s
+
+volumes:
+  hub-data:

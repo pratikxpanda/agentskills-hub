@@ -1,7 +1,5 @@
 version: 2
 
-# The npm ecosystem is added by the web/ scaffolding, not before it: Dependabot errors on every
-# run against a directory with no manifest.
 updates:
   - package-ecosystem: github-actions
     directory: /
@@ -14,6 +12,26 @@ updates:
 
   - package-ecosystem: pip
     directory: /
+    schedule:
+      interval: weekly
+    labels:
+      - dependencies
+    commit-message:
+      prefix: "deps:"
+
+  # The Dockerfile pins base images by digest, which is only safe if something is responsible for
+  # moving the digest. That something is this.
+  - package-ecosystem: docker
+    directory: /deploy
+    schedule:
+      interval: weekly
+    labels:
+      - dependencies
+    commit-message:
+      prefix: "deps:"
+
+  - package-ecosystem: npm
+    directory: /web
     schedule:
       interval: weekly
     labels:

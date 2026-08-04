@@ -28,8 +28,6 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from alembic import command
-from alembic.config import Config
 from sqlmodel import col, select
 
 from agentskills_hub_core import (
@@ -50,10 +48,10 @@ from agentskills_hub_core import (
     session_scope,
 )
 from agentskills_hub_core.database import DEFAULT_DATABASE_URL
+from agentskills_hub_core.schema import upgrade_to_head
 
 ROOT = Path(__file__).resolve().parent.parent
 MANIFEST = ROOT / "examples" / "seed.yaml"
-_SCRIPT_LOCATION = "packages/core/agentskills-hub-core/agentskills_hub_core/migrations"
 
 DEFAULT_STORE_ROOT = "./store"
 DEFAULT_PUBLIC_URL = "http://127.0.0.1:8000"
@@ -82,13 +80,6 @@ class SeedResult:
         if token is None:
             raise RuntimeError(f"{slug} already had an API key; seed with rotate=True for a token.")
         return token
-
-
-def upgrade_to_head(url: str) -> None:
-    config = Config(str(ROOT / "alembic.ini"))
-    config.set_main_option("script_location", str(ROOT / _SCRIPT_LOCATION))
-    config.set_main_option("sqlalchemy.url", url)
-    command.upgrade(config, "head")
 
 
 def pack(directory: Path) -> bytes:
