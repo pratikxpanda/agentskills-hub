@@ -434,7 +434,10 @@ is the floor. The directive list is in `web/src/csp.ts` so that a test can asser
 
 **There is no router dependency.** `react-router-dom` carried a live high-severity advisory for a
 React Server Components feature this SPA does not use, so `web/src/routes.ts` is about fifty lines
-of `pushState` and `popstate`. `npm audit --audit-level=high` runs in CI to keep that honest.
+of `pushState` and `popstate`. `npm audit` runs in CI to keep that honest, in two steps:
+`--omit=dev` blocks, because it covers what a user actually loads, and the full audit reports
+without blocking. The distinction exists because an advisory with no published patch is a real
+state — a DoS in a glob matcher reached through eslint stops no merges and ships to nobody.
 
 ## Testing
 
