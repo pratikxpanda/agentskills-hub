@@ -1,0 +1,31 @@
+[tool.poetry]
+name = "agentskills-hub-server"
+version = "0.1.0"
+description = "Composition root: the Agent Skills Hub API, MCP gateway, and UI in one process"
+license = "MIT"
+authors = ["Pratik Panda"]
+readme = "README.md"
+homepage = "https://github.com/pratikxpanda/agentskills-hub"
+repository = "https://github.com/pratikxpanda/agentskills-hub"
+packages = [{include = "agentskills_hub_server"}]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+]
+
+[tool.poetry.dependencies]
+python = ">=3.12,<4.0"
+agentskills-hub-api = { path = "../../api/agentskills-hub-api", develop = true }
+agentskills-hub-gateway = { path = "../../gateway/agentskills-hub-gateway", develop = true }
+starlette = ">=0.40,<2.0"
+uvicorn = ">=0.30,<1.0"
+# The container entrypoint seeds from a YAML manifest, and a deployment that cannot demonstrate
+# itself is the problem the image exists to solve. Declared here so the lock file governs it.
+pyyaml = ">=6.0,<7.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

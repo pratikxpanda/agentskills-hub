@@ -161,3 +161,87 @@ jobs:
 
       - name: Audit dependencies
         run: npm audit --audit-level=high
+
+  image:
+    name: Container image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+
+      - name: Build
+        run: docker buildx build --file deploy/Dockerfile --tag agentskills-hub:ci --load .
+
+      # Building an image proves it compiles. Starting it proves the entrypoint, the migrations,
+      # the seeder, the non-root user, and the read-only filesystem agree with each other, which
+      # is where every one of this item's acceptance criteria actually lives.
+      - name: Start it the way compose does
+        run: |
+          docker volume create hub-ci-data
+          docker run --detach --name hub \
+            --publish 8000:8000 \
+            --read-only --tmpfs /tmp \
+            --user 10001:10001 \
+            --cap-drop ALL --security-opt no-new-privileges:true \
+            --volume hub-ci-data:/data \
+            --env HUB_SEED=on \
+            --env HUB_ALLOWED_HOSTS=127.0.0.1:8000,localhost:8000 \
+            agentskills-hub:ci
+          for _ in $(seq 1 30); do
+            if curl --silent --fail http://127.0.0.1:8000/api/health > /dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "The Hub never became healthy."
+          docker logs hub
+          exit 1
+
+      - name: The seeder printed a key and an MCP endpoint
+        run: |
+          docker logs hub 2>&1 | tee /tmp/hub.log
+          grep -q "MCP endpoint  http" /tmp/hub.log
+          key=$(grep -oE "ashub_\S+" /tmp/hub.log | head -n 1)
+          test -n "$key"
+          echo "::add-mask::$key"
+          echo "HUB_KEY=$key" >> "$GITHUB_ENV"
+
+      - name: The UI is served from the same origin
+        run: curl --silent --fail http://127.0.0.1:8000/ | grep -q "<title>"
+
+      # The volume, not the container, is what has to survive, and "health is 200" would not have
+      # noticed an empty store. The key minted before the restart still working, against a catalog
+      # that still has the seeded skill in it, is the claim worth making.
+      - name: The data survives a restart
+        run: |
+          docker rm --force hub
+          docker run --detach --name hub2 \
+            --publish 8001:8000 \
+            --read-only --tmpfs /tmp \
+            --user 10001:10001 \
+            --volume hub-ci-data:/data \
+            --env HUB_ALLOWED_HOSTS=127.0.0.1:8001,localhost:8001 \
+            agentskills-hub:ci
+          for _ in $(seq 1 30); do
+            curl --silent --fail http://127.0.0.1:8001/api/health > /dev/null && break
+            sleep 2
+          done
+          curl --silent --fail --header "Authorization: Bearer $HUB_KEY" \
+            http://127.0.0.1:8001/api/skills | tee /tmp/catalog.json
+          grep -q "incident-response" /tmp/catalog.json
+
+      - name: Generate an SBOM
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+        with:
+          image: agentskills-hub:ci
+          format: spdx-json
+          artifact-name: agentskills-hub.spdx.json
+          output-file: agentskills-hub.spdx.json
+
+      - name: Publish the SBOM
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sbom
+          path: agentskills-hub.spdx.json

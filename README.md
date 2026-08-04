@@ -56,6 +56,28 @@ That endpoint serves the union of the team's subscriptions, at the versions the 
 Hub client library, no SDK install, no framework lock-in — any MCP client works, including
 GitHub Copilot in VS Code, Claude Desktop, Microsoft Agent Framework, and LangChain agents.
 
+## Try it
+
+```bash
+git clone https://github.com/pratikxpanda/agentskills-hub.git
+cd agentskills-hub
+docker compose -f deploy/docker-compose.yml up --build
+```
+
+One container, no other prerequisites. It migrates, seeds two teams and two skills, and prints
+each team's API key and MCP endpoint:
+
+```
+  Checkout Squad (checkout-squad)
+    MCP endpoint  http://127.0.0.1:8000/mcp/checkout-squad
+    API key       ashub_...
+```
+
+The UI is on <http://127.0.0.1:8000>. Point an agent at the printed endpoint with the printed key
+as a bearer token — [examples/agent/](examples/agent) has one for Microsoft Agent Framework and
+one for LangChain. [deploy/README.md](deploy/README.md) covers configuration, persistence, and
+what to change before running it anywhere real.
+
 ## Architecture
 
 ```text
@@ -113,6 +135,7 @@ deployment shapes, and [GLOSSARY.md](docs/GLOSSARY.md) for the precise meaning o
 | `agentskills-hub-core` | Domain model, skill store, repositories. No web framework. |
 | `agentskills-hub-api` | FastAPI control plane — catalog, publish, subscriptions, intake, approvals. |
 | `agentskills-hub-gateway` | Per-team MCP endpoint. Composes a `SkillRegistry` per connection and serves it through `agentskills-mcp-server`. |
+| `agentskills-hub-server` | Composition root: the API, the gateway, and the built UI in one process. The only package that knows all three exist. |
 | `agentskills-hub-cli` | `publish`, `search`, `subscribe`, `status`, `diff` — and the CI publishing path. |
 | `web/` | Catalog, skill detail, subscriptions, publish, and intake UI. |
 
@@ -158,6 +181,7 @@ non-goals, and the [dependency contract with the SDK](docs/ROADMAP.md#what-the-h
 | [docs/issues/](docs/issues/) | Full specifications per milestone — problem, proposal, acceptance criteria. |
 | [docs/adr/](docs/adr/README.md) | Architecture decisions and their trade-offs. |
 | [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | Target repository layout and development workflow. |
+| [deploy/README.md](deploy/README.md) | Running the Hub: the image, compose, configuration, and Azure. |
 | [examples/](examples/README.md) | Seed corpus and the demo agent. |
 
 ## Related

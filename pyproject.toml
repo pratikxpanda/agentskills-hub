@@ -11,6 +11,7 @@ python = ">=3.12,<4.0"
 agentskills-hub-core = { path = "packages/core/agentskills-hub-core", develop = true }
 agentskills-hub-api = { path = "packages/api/agentskills-hub-api", develop = true }
 agentskills-hub-gateway = { path = "packages/gateway/agentskills-hub-gateway", develop = true }
+agentskills-hub-server = { path = "packages/server/agentskills-hub-server", develop = true }
 agentskills-hub-cli = { path = "packages/cli/agentskills-hub-cli", develop = true }
 
 [tool.poetry.group.dev.dependencies]
@@ -57,6 +58,7 @@ known-first-party = [
     "agentskills_hub_core",
     "agentskills_hub_api",
     "agentskills_hub_gateway",
+    "agentskills_hub_server",
     "agentskills_hub_cli",
 ]
 
@@ -84,6 +86,7 @@ root_packages = [
     "agentskills_hub_core",
     "agentskills_hub_api",
     "agentskills_hub_gateway",
+    "agentskills_hub_server",
     "agentskills_hub_cli",
 ]
 # Required because the contracts below forbid third-party modules, not just our own.
@@ -102,6 +105,7 @@ source_modules = ["agentskills_hub_core"]
 forbidden_modules = [
     "agentskills_hub_api",
     "agentskills_hub_gateway",
+    "agentskills_hub_server",
     "agentskills_hub_cli",
 ]
 
@@ -116,6 +120,19 @@ name = "gateway does not depend on the api or the CLI"
 type = "forbidden"
 source_modules = ["agentskills_hub_gateway"]
 forbidden_modules = ["agentskills_hub_api", "agentskills_hub_cli"]
+
+# The composition root is the only place that may know both edges exist. If anything else can
+# import it, "run the API and the gateway separately" quietly stops being true.
+[[tool.importlinter.contracts]]
+name = "nothing depends on the composition root"
+type = "forbidden"
+source_modules = [
+    "agentskills_hub_core",
+    "agentskills_hub_api",
+    "agentskills_hub_gateway",
+    "agentskills_hub_cli",
+]
+forbidden_modules = ["agentskills_hub_server"]
 
 # Content access goes through the SkillStore protocol, which is what makes a blob-backed
 # store a configuration change rather than a rewrite.
@@ -146,6 +163,7 @@ source_modules = [
     "agentskills_hub_core",
     "agentskills_hub_api",
     "agentskills_hub_gateway",
+    "agentskills_hub_server",
     "agentskills_hub_cli",
 ]
 forbidden_modules = ["mcp"]
