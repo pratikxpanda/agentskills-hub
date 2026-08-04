@@ -26,10 +26,16 @@ ENV PATH="/opt/venv/bin:$PATH"
 # The lock file is the source of truth for third-party versions; the four workspace packages are
 # built as wheels so that nothing in the runtime image is an editable install pointing at a
 # checkout that is not there.
+#
+# The filter is a substring match, not an anchored one: poetry writes a path dependency as
+# `-e file:///src/packages/api/agentskills-hub-api`, so anchoring on the package name matches
+# nothing and pip then tries to install a directory that has not been copied yet. The `file://`
+# assertion is there so that a future change to that format fails here rather than at runtime.
 COPY pyproject.toml poetry.lock ./
 RUN pip install "poetry==2.2.1" "poetry-plugin-export==1.9.0" \
  && poetry export --only main --without-hashes --format requirements.txt \
-      | grep -v "^agentskills-hub" > /tmp/requirements.txt \
+      | grep -v "agentskills-hub" > /tmp/requirements.txt \
+ && ! grep -q "file://" /tmp/requirements.txt \
  && pip install -r /tmp/requirements.txt
 
 COPY packages/ ./packages/
