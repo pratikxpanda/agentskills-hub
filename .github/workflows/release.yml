@@ -1,0 +1,138 @@
+# Publishes the container image. CI already builds the same Dockerfile on every pull request, so
+# what this adds is not confidence in the build - it is an artifact somebody can run without a
+# checkout, which is the difference between "clone the repo and wait for a build" and
+# `docker run ghcr.io/pratikxpanda/agentskills-hub:0.1.0`.
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to publish, without the leading v (e.g. 0.1.0)."
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  image:
+    name: Publish the container image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the release
+      packages: write # push to GHCR
+      id-token: write # sign the provenance attestation
+      attestations: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Work out what is being released
+        id: version
+        run: |
+          version="${{ inputs.version }}"
+          if [ -z "$version" ]; then
+            version="${GITHUB_REF_NAME#v}"
+          fi
+          case "$version" in
+            [0-9]*.[0-9]*.[0-9]*) ;;
+            *) echo "Refusing to publish '$version': not a semantic version." >&2; exit 1 ;;
+          esac
+          repo=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          {
+            echo "version=$version"
+            echo "image=ghcr.io/$repo"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+
+      # amd64 only. Every dependency has an aarch64 wheel, so arm64 would probably work, but
+      # "probably" is not a thing to discover in a release job; it is tracked for v0.2.
+      - name: Build
+        run: |
+          docker buildx build \
+            --file deploy/Dockerfile \
+            --platform linux/amd64 \
+            --tag "${{ steps.version.outputs.image }}:${{ steps.version.outputs.version }}" \
+            --tag "${{ steps.version.outputs.image }}:latest" \
+            --load .
+
+      # The tag is the last point at which a mistake is cheap. Once this image is pushed somebody
+      # can pull it, so it starts here before it goes anywhere.
+      - name: It starts, serves, and has the seeded catalog in it
+        run: |
+          docker run --detach --name hub \
+            --publish 8000:8000 \
+            --read-only --tmpfs /tmp \
+            --user 10001:10001 \
+            --cap-drop ALL --security-opt no-new-privileges:true \
+            --env HUB_SEED=on \
+            --env HUB_ALLOWED_HOSTS=127.0.0.1:8000,localhost:8000 \
+            "${{ steps.version.outputs.image }}:${{ steps.version.outputs.version }}"
+          for _ in $(seq 1 30); do
+            curl --silent --fail http://127.0.0.1:8000/api/health > /dev/null && break
+            sleep 2
+          done
+          curl --silent --fail http://127.0.0.1:8000/api/health
+          curl --silent --fail http://127.0.0.1:8000/ | grep -q "<title>"
+          docker logs hub 2>&1 | tee /tmp/hub.log
+          key=$(grep -oE "ashub_\S+" /tmp/hub.log | head -n 1)
+          test -n "$key"
+          echo "::add-mask::$key"
+          curl --silent --fail --header "Authorization: Bearer $key" \
+            http://127.0.0.1:8000/api/skills | grep -q "incident-response"
+          docker rm --force hub
+
+      - name: Log in to GHCR
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push
+        id: push
+        run: |
+          docker push "${{ steps.version.outputs.image }}:${{ steps.version.outputs.version }}"
+          docker push "${{ steps.version.outputs.image }}:latest"
+          digest=$(docker inspect --format '{{index .RepoDigests 0}}' \
+            "${{ steps.version.outputs.image }}:${{ steps.version.outputs.version }}" | cut -d@ -f2)
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+
+      # Answers "did this image come from this repository, built from this commit" without asking
+      # anyone to trust the answer. `docker buildx imagetools` and `gh attestation verify` both read it.
+      - name: Attest the build provenance
+        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
+        with:
+          subject-name: ${{ steps.version.outputs.image }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
+
+      - name: Generate an SBOM
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+        with:
+          image: ${{ steps.version.outputs.image }}:${{ steps.version.outputs.version }}
+          format: spdx-json
+          artifact-name: agentskills-hub.spdx.json
+          output-file: agentskills-hub.spdx.json
+
+      - name: Draft the release
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --draft \
+            --verify-tag \
+            --title "$GITHUB_REF_NAME" \
+            --generate-notes \
+            agentskills-hub.spdx.json
+          cat >> "$GITHUB_STEP_SUMMARY" <<SUMMARY
+          Published \`${{ steps.version.outputs.image }}:${{ steps.version.outputs.version }}\`
+          at \`${{ steps.push.outputs.digest }}\`.
+
+          The release is a **draft**; publishing it is a human decision.
+          SUMMARY
