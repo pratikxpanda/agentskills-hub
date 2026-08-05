@@ -238,6 +238,33 @@ async def test_a_second_version_of_the_same_skill_is_accepted(api: ApiFixture) -
     assert len(_published(api.store_root)) == 2
 
 
+async def test_another_team_cannot_publish_a_version_of_someone_elses_skill(
+    api: ApiFixture,
+) -> None:
+    assert (await _publish(api.client, api.alice.headers, _archive())).status_code == 201
+
+    response = await _publish(
+        api.client, api.bob.headers, _archive(description="Bob's rewrite."), version="1.1.0"
+    )
+
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "not_skill_owner"
+    assert api.alice.slug not in response.text
+    assert len(_published(api.store_root)) == 1
+
+
+async def test_another_team_cannot_overwrite_an_existing_version(api: ApiFixture) -> None:
+    assert (await _publish(api.client, api.alice.headers, _archive())).status_code == 201
+
+    response = await _publish(api.client, api.bob.headers, _archive(description="Bob's rewrite."))
+
+    assert response.status_code == 403
+    stored = (
+        api.store_root / "skills" / "incident-response" / "1.0.0" / "incident-response" / "SKILL.md"
+    ).read_text()
+    assert "Bob's rewrite." not in stored
+
+
 async def test_tags_must_be_a_json_array_of_strings(api: ApiFixture) -> None:
     response = await _publish(api.client, api.alice.headers, _archive(), tags="sre, oncall")
 
@@ -295,8 +322,8 @@ async def test_openapi_documents_the_request_and_every_error(api: ApiFixture) ->
     schema = (await api.client.get("/openapi.json")).json()
     operation = schema["paths"]["/api/skills"]["post"]
 
-    assert set(operation["responses"]) >= {"201", "400", "409", "413"}
-    for code in ("400", "409", "413"):
+    assert set(operation["responses"]) >= {"201", "400", "403", "409", "413"}
+    for code in ("400", "403", "409", "413"):
         ref = operation["responses"][code]["content"]["application/json"]["schema"]["$ref"]
         assert ref.endswith("ErrorResponse")
 
