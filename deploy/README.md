@@ -3,6 +3,25 @@
 One image, one process, one volume. The API, the MCP gateway, and the built UI are one deployment
 in v0.1 because splitting them would be a scaling decision no v0.1 deployment has earned.
 
+## Published images
+
+Pushing a `v*` tag runs [release.yml](../.github/workflows/release.yml), which builds the image,
+starts it and checks it serves a seeded catalog, pushes it to
+`ghcr.io/pratikxpanda/agentskills-hub` as both the version and `latest`, signs a build-provenance
+attestation, and opens a draft release with an SBOM attached.
+
+```bash
+docker run --rm -p 8000:8000 -v hub-data:/data \
+  -e HUB_SEED=on -e HUB_ALLOWED_HOSTS=127.0.0.1:8000,localhost:8000 \
+  ghcr.io/pratikxpanda/agentskills-hub:latest
+```
+
+Images are `linux/amd64` only. Verify one before you run it:
+
+```bash
+gh attestation verify oci://ghcr.io/pratikxpanda/agentskills-hub:latest --repo pratikxpanda/agentskills-hub
+```
+
 ## Locally
 
 ```bash
