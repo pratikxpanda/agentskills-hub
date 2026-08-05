@@ -71,6 +71,7 @@ def _parse_tags(raw: str | None) -> list[str]:
     summary="Publish a skill version",
     responses={
         400: {"model": ErrorResponse, "description": "Identifiers, tags, or content are invalid."},
+        403: {"model": ErrorResponse, "description": "Another team owns that skill."},
         409: {"model": ErrorResponse, "description": "That version is already published."},
         413: {"model": ErrorResponse, "description": "An archive limit was breached."},
     },
@@ -94,6 +95,15 @@ async def publish_skill(
     skills = SkillRepository(session)
 
     existing = await skills.get_by_skill_id(skill_id)
+    if existing is not None and existing.owner_team_id != principal.team_id:
+        # Checked before the archive reaches the store, so a refused publish leaves nothing behind.
+        # The owning team is not named: the caller has no read access to it.
+        raise ApiError(
+            status.HTTP_403_FORBIDDEN,
+            "not_skill_owner",
+            f"{skill_id} is owned by another team; only its owner can publish a new version.",
+        )
+
     if store.exists(skill_id, version) or (
         existing is not None and await skills.get_version(existing.id, version) is not None
     ):
