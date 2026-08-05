@@ -399,6 +399,27 @@ What matters when changing it:
   `alembic.ini`, on purpose: "the file a developer edits still works" is a separate claim.
 - **CI starts the image, not just builds it.** The entrypoint, the migrations, the seeder, the
   non-root user, and the read-only filesystem only disagree with each other at runtime.
+- **A `v*` tag publishes it.** [release.yml](../.github/workflows/release.yml) builds, smoke-tests,
+  pushes to `ghcr.io/pratikxpanda/agentskills-hub`, signs a provenance attestation, and opens a
+  *draft* release with an SBOM attached. Publishing that draft stays a human decision. The
+  filter on the version string is deliberate: a mistyped tag should fail before the push, because
+  a tag can be deleted and a pushed image tag is one somebody may already have pulled.
+
+## What CI enforces
+
+| Job | Gate |
+| --- | --- |
+| `Docs` | Relative links resolve; every YAML file parses. |
+| `Example skills` | The SDK validates everything under `examples/skills/`. |
+| `Lint` | Formatting, ruff, mypy, import contracts, `pip-audit`. |
+| `Test (Python 3.12/3.13/3.14)` | The package suites. |
+| `End to end` | Publish, subscribe, connect over MCP, assert the tool surface. |
+| `Web UI` | Lint, test, build (which typechecks and injects the CSP), audit of what ships. |
+| `Container image` | Build, start, seed, restart, and prove the volume survived. |
+| `Analyze (Python)` / `Analyze (JavaScript)` | CodeQL over the server and the UI. |
+
+All of them are required on `main`. A job that can go red without blocking a merge is a job
+nobody reads.
 
 ## Web UI
 
