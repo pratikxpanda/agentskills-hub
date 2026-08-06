@@ -4,7 +4,7 @@
 # anyone wants to debug in a deployment.
 
 # --- The UI ------------------------------------------------------------------------------------
-FROM node:22-bookworm-slim@sha256:f32b81066cde10a75dbac96646099533316d94bac4150c55da1636e1f0ffdc46 AS ui
+FROM node:26-bookworm-slim@sha256:9e6f9357d371591e32ab6f2d8a26d63bdd0d17c29eee3f4f3e7e454d9634bf73 AS ui
 
 WORKDIR /ui
 COPY web/package.json web/package-lock.json ./
@@ -13,7 +13,7 @@ COPY web/ ./
 RUN npm run build
 
 # --- The Python packages -----------------------------------------------------------------------
-FROM python:3.12-slim-bookworm@sha256:d50fb7611f86d04a3b0471b46d7557818d88983fc3136726336b2a4c657aa30b AS build
+FROM python:3.14-slim-bookworm@sha256:86f975aca15cf04a40b399eebede9aea7c82eae084d1f1a0a6ef6bcaae871a30 AS build
 
 ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PIP_NO_CACHE_DIR=1 \
@@ -46,7 +46,7 @@ RUN pip install --no-deps \
       ./packages/server/agentskills-hub-server
 
 # --- The runtime -------------------------------------------------------------------------------
-FROM python:3.12-slim-bookworm@sha256:d50fb7611f86d04a3b0471b46d7557818d88983fc3136726336b2a4c657aa30b AS runtime
+FROM python:3.14-slim-bookworm@sha256:86f975aca15cf04a40b399eebede9aea7c82eae084d1f1a0a6ef6bcaae871a30 AS runtime
 
 LABEL org.opencontainers.image.title="Agent Skills Hub" \
       org.opencontainers.image.description="Governed catalogue and delivery plane for Agent Skills" \
