@@ -4,7 +4,7 @@
 # anyone wants to debug in a deployment.
 
 # --- The UI ------------------------------------------------------------------------------------
-FROM node:22-bookworm-slim@sha256:f32b81066cde10a75dbac96646099533316d94bac4150c55da1636e1f0ffdc46 AS ui
+FROM node:26-bookworm-slim@sha256:9e6f9357d371591e32ab6f2d8a26d63bdd0d17c29eee3f4f3e7e454d9634bf73 AS ui
 
 WORKDIR /ui
 COPY web/package.json web/package-lock.json ./
