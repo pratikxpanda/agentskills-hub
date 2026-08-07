@@ -38,3 +38,11 @@ updates:
       - dependencies
     commit-message:
       prefix: "deps:"
+    ignore:
+      # TypeScript 7 is the Go port and drops the JavaScript compiler API that typescript-eslint
+      # builds on, so `typescript-eslint` peer-caps at `<6.1.0` and throws on TS 7 even if the
+      # install is forced. `npm ci` fails outright, which is what broke the container image build.
+      # Lift this once typescript-eslint ships TS >=7.1 support:
+      # https://github.com/typescript-eslint/typescript-eslint/issues/10940
+      - dependency-name: typescript
+        versions: [">=7"]
